@@ -10,5 +10,5 @@ python3 -m venv .venv 2>/dev/null || true
 source .venv/bin/activate
 pip install -q -r requirements.txt
 python -c "from database import init_db, seed_data, ensure_master_password_seed, ensure_owner_user; init_db(); seed_data(); ensure_master_password_seed(); ensure_owner_user()"
-export PORT="${PORT:-8080}"
+export PORT="${PORT:-8081}"
 python server.py

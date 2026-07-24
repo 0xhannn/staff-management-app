@@ -93,7 +93,9 @@
                 </span>
             </h1>
             <p class="dash-sub mt-2">
-                {% if login_role in ['mentor', 'owner'] %}
+                {% if login_role == 'owner' %}
+                Mode <span class="text-[var(--accent)] font-medium">Owner</span> — pantau semua staff · filter · assign task
+                {% elif login_role == 'mentor' %}
                 Mode <span class="text-[var(--accent)] font-medium">Atasan</span> — mengelola data akun @{{ user.username }}
                 {% else %}
                 Mode <span class="text-[var(--accent)] font-medium">Karyawan</span> — semangat belajar, {{ user.nama }}!
@@ -225,14 +227,54 @@
     <!-- ============== TAB: ABSENSI ============== -->
     <div data-tab-content="absensi" class="tab-content">
         {% if login_role in ['mentor', 'owner'] %}
-        <!-- MENTOR: Form Input Absensi + Lock + Izin/Alpha + Calendar -->
+        <!-- MENTOR/OWNER: Form Input Absensi + filters + Calendar -->
         <div class="space-y-6">
+            {% if login_role == 'owner' %}
+            <div class="card p-4 max-w-3xl mx-auto">
+                <div class="flex flex-wrap items-end gap-3">
+                    <div class="flex-1 min-w-[140px]">
+                        <label class="text-[11px] uppercase tracking-wider text-gray-500 mb-1 block">Filter karyawan</label>
+                        <select id="owner-filter-staff" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white">
+                            <option value="">Semua karyawan</option>
+                            {% for u in all_users if u.username != 'owner' %}
+                            <option value="{{ u.username }}">@{{ u.username }} — {{ u.nama }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="min-w-[140px]">
+                        <label class="text-[11px] uppercase tracking-wider text-gray-500 mb-1 block">Filter tanggal</label>
+                        <input type="date" id="owner-filter-date" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white">
+                    </div>
+                    <button type="button" onclick="applyOwnerFilters()" class="px-4 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium">
+                        <i class="fas fa-filter mr-1"></i>Terapkan
+                    </button>
+                    <button type="button" onclick="clearOwnerFilters()" class="px-3 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm">Reset</button>
+                </div>
+                <p class="text-[11px] text-gray-600 mt-2">Filter tabel kehadiran & target input absensi. Kosongkan tanggal = semua hari.</p>
+            </div>
+            {% endif %}
             <div class="card p-5 max-w-xl mx-auto">
                 <h2 class="text-lg font-semibold text-white mb-1">
                     <i class="fas fa-calendar-check text-blue-400 mr-2"></i>Input Absensi
                 </h2>
-                <p class="text-sm text-gray-500 mb-4">Sahkan jam kerja untuk <span class="text-blue-400 font-medium">@{{ user.username }}</span></p>
+                <p class="text-sm text-gray-500 mb-4">
+                    {% if login_role == 'owner' %}
+                    Sahkan jam kerja staff (pilih target di bawah)
+                    {% else %}
+                    Sahkan jam kerja untuk <span class="text-blue-400 font-medium">@{{ user.username }}</span>
+                    {% endif %}
+                </p>
                 
+                {% if login_role == 'owner' %}
+                <div class="mb-4">
+                    <label class="text-[11px] uppercase tracking-wider text-gray-500 mb-1 block">Target karyawan</label>
+                    <select id="owner-target-staff" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white">
+                        {% for u in all_users if u.username != 'owner' %}
+                        <option value="{{ u.username }}">@{{ u.username }} — {{ u.nama }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
                 <input type="hidden" id="pkl-select" value="{{ user.id }}">
                 
                 <!-- Status indicator -->
@@ -333,7 +375,7 @@
                         </thead>
                         <tbody>
                             {% for att in all_attendance %}
-                            <tr class="border-b border-gray-800/50 hover:bg-gray-900/30">
+                            <tr class="owner-att-row border-b border-gray-800/50 hover:bg-gray-900/30" data-staff="{{ att.username }}" data-date="{{ att.date }}">
                                 <td class="py-3 px-2 text-white">{{ att.username }}</td>
                                 <td class="py-3 px-2 text-gray-400">{{ att.date }}</td>
                                 <td class="py-3 px-2 text-gray-400">{{ att.clock_in or '-' }}</td>
@@ -685,7 +727,19 @@
                 </div>
                 <input type="file" id="new-task-file" class="hidden" onchange="document.getElementById('new-task-file-label').textContent = this.files[0]?.name || 'Klik untuk pilih file'">
             </div>
-            <input type="hidden" id="new-assign-to" value="{{ user.username }}">
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Assign ke Karyawan *</label>
+                {% if login_role == 'owner' %}
+                <select id="new-assign-to" class="form-input w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500">
+                    {% for u in all_users if u.username != 'owner' %}
+                    <option value="{{ u.username }}">@{{ u.username }} — {{ u.nama }}</option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <input type="hidden" id="new-assign-to" value="{{ user.username }}">
+                <div class="text-sm text-gray-400 px-1">@{{ user.username }} (pair 1-to-1)</div>
+                {% endif %}
+            </div>
         </div>
         <div class="p-5 border-t border-gray-800 flex gap-3">
             <button onclick="closeModal('modal-buat-tugas')" class="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-2.5 rounded-xl text-sm font-medium transition">Batal</button>
@@ -1136,11 +1190,35 @@ async function handleKaryawanAttendance() {
     }
 }
 
+
+// ========== Owner filters (staff + date) ==========
+function applyOwnerFilters() {
+    const staff = (document.getElementById('owner-filter-staff') || {}).value || '';
+    const date = (document.getElementById('owner-filter-date') || {}).value || '';
+    document.querySelectorAll('.owner-att-row').forEach(function (tr) {
+        const okStaff = !staff || tr.getAttribute('data-staff') === staff;
+        const okDate = !date || tr.getAttribute('data-date') === date;
+        tr.style.display = (okStaff && okDate) ? '' : 'none';
+    });
+    // sync target select with filter if staff chosen
+    const tgt = document.getElementById('owner-target-staff');
+    if (tgt && staff) tgt.value = staff;
+}
+function clearOwnerFilters() {
+    const s = document.getElementById('owner-filter-staff');
+    const d = document.getElementById('owner-filter-date');
+    if (s) s.value = '';
+    if (d) d.value = '';
+    document.querySelectorAll('.owner-att-row').forEach(function (tr) { tr.style.display = ''; });
+}
+
 // Clock In / Clock Out (Mentor Mode - No Photo)
 function markAttendance(action) {
-    // Mentor: no camera. Route clock_in → /api/attendance, clock_out → /api/clock-out
+    // Mentor/Owner: no camera. Route clock_in → /api/attendance, clock_out → /api/clock-out
     const endpoint = action === 'clock_out' ? '/api/clock-out' : '/api/attendance';
     const formData = new FormData();
+    const tgt = document.getElementById('owner-target-staff');
+    if (tgt && tgt.value) formData.append('target_username', tgt.value);
     fetch(endpoint, { method: 'POST', body: formData })
     .then(r => r.json())
     .then(data => {

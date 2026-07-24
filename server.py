@@ -33,7 +33,10 @@ TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
 env = Environment(loader=FileSystemLoader(TEMPLATES_DIR))
 
 app = FastAPI(title="Staff Management")
+UPLOADS_DIR = os.path.join(BASE_DIR, 'data', 'uploads')
+os.makedirs(UPLOADS_DIR, exist_ok=True)
 app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
+app.mount('/uploads', StaticFiles(directory=UPLOADS_DIR), name='uploads')
 
 SESSION_COOKIE = 'staff_session'
 
@@ -105,39 +108,45 @@ def require_auth(request: Request):
     return user
 
 async def upload_file_to_r2(file: UploadFile, folder: str = 'files') -> str:
-    """Upload file to Cloudflare R2 and return CDN URL. Returns None on failure."""
+    """Upload to R2 if configured; otherwise save under data/uploads and return /uploads URL."""
+    content = await file.read()
+    if not content:
+        print('[upload] Empty file content — refuse')
+        return None
+
+    ext = os.path.splitext(file.filename or 'file')[1] or '.jpg'
+    name = f"{uuid.uuid4().hex}{ext}"
+
     R2_ENDPOINT, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET, CDN_BASE = _r2_cfg()
+    if R2_ENDPOINT and R2_ACCESS_KEY and R2_SECRET_KEY and R2_BUCKET and CDN_BASE:
+        try:
+            key = f"staffmanagementapp/{folder}/{name}"
+            client = boto3.client(
+                's3',
+                endpoint_url=R2_ENDPOINT,
+                aws_access_key_id=R2_ACCESS_KEY,
+                aws_secret_access_key=R2_SECRET_KEY,
+                config=Config(signature_version='s3v4')
+            )
+            # re-open stream from bytes
+            import io
+            client.put_object(
+                Bucket=R2_BUCKET,
+                Key=key,
+                Body=content,
+                ContentType=file.content_type or 'image/jpeg',
+            )
+            return f"{CDN_BASE}/staffmanagementapp/{folder}/{name}"
+        except Exception as e:
+            print(f'[R2] Upload failed, falling back to local: {e}')
 
-    if not (R2_ENDPOINT and R2_ACCESS_KEY and R2_SECRET_KEY and R2_BUCKET and CDN_BASE):
-        print('[R2] incomplete config — skip upload (local starter)')
-        return None
-
-    try:
-        content = await file.read()
-        if not content:
-            print('[R2] Empty file content — refuse upload')
-            return None
-
-        ext = os.path.splitext(file.filename or 'file')[1] or '.jpg'
-        key = f"staffmanagementapp/{folder}/{uuid.uuid4().hex}{ext}"
-
-        client = boto3.client(
-            's3',
-            endpoint_url=R2_ENDPOINT,
-            aws_access_key_id=R2_ACCESS_KEY,
-            aws_secret_access_key=R2_SECRET_KEY,
-            config=Config(signature_version='s3v4')
-        )
-        client.put_object(
-            Bucket=R2_BUCKET,
-            Key=key,
-            Body=content,
-            ContentType=file.content_type or 'image/jpeg',
-        )
-        return f"{CDN_BASE}/staffmanagementapp/{folder}/{key.split('/')[-1]}"
-    except Exception as e:
-        print(f'[R2] Upload failed: {e}')
-        return None
+    # Local fallback (public starter / no R2)
+    folder_dir = os.path.join(UPLOADS_DIR, folder)
+    os.makedirs(folder_dir, exist_ok=True)
+    path = os.path.join(folder_dir, name)
+    with open(path, 'wb') as f:
+        f.write(content)
+    return f"/uploads/{folder}/{name}"
 
 async def delete_file_from_r2(file_url: str):
     """Delete file from R2 using its CDN URL"""
@@ -631,7 +640,7 @@ async def dashboard(request: Request):
         today_att=today_att,
         current_date=current_date,
         current_time=current_time,
-        all_attendance_for_calendar=[]
+        all_attendance_for_calendar=all_attendance or recent_attendance or []
     )
     return HTMLResponse(content=content)
 
@@ -641,53 +650,83 @@ async def absensi_page(request: Request):
 
 @app.post('/api/attendance')
 @app.post('/api/clock-in')  # alias — frontend historically mixed these paths
-async def api_attendance_clock_in(request: Request, photo: UploadFile = File(None)):
-    """PKL clock-in: wajib upload foto bukti → R2, simpan photo_url."""
+async def api_attendance_clock_in(
+    request: Request,
+    photo: UploadFile = File(None),
+    target_username: str = Form(''),
+):
+    """Clock-in: Karyawan wajib foto (R2 or local). Atasan/Owner can mark self or target staff (no photo)."""
     user = require_auth(request)
 
-    # Treat empty UploadFile (no filename / zero-byte) as missing
     has_photo = bool(photo and getattr(photo, 'filename', None))
     photo_url = None
-    if user.get('login_role') == 'pkl':
+    target_id = user['id']
+    role = user.get('login_role')
+
+    # Owner/Atasan may clock-in for a staff username
+    if role in ('owner', 'mentor') and target_username and target_username.strip():
+        stu = get_user_by_username(target_username.strip().lower())
+        if not stu:
+            return JSONResponse(status_code=400, content={'success': False, 'error': 'Staff tidak ditemukan'})
+        if role == 'mentor' and stu['username'] != user['username']:
+            return JSONResponse(status_code=403, content={'success': False, 'error': 'Atasan hanya 1-to-1 pair'})
+        target_id = stu['id']
+    elif role == 'pkl':
         if not has_photo:
             return JSONResponse(
                 status_code=400,
-                content={'success': False, 'error': 'Bukti foto wajib diupload untuk PKL!'},
+                content={'success': False, 'error': 'Bukti foto wajib diupload untuk Karyawan!'},
             )
         photo_url = await upload_file_to_r2(photo, 'attendance')
         if not photo_url:
             return JSONResponse(
                 status_code=500,
-                content={'success': False, 'error': 'Gagal upload bukti ke storage. Coba lagi.'},
+                content={'success': False, 'error': 'Gagal simpan bukti foto. Coba lagi.'},
             )
+    elif has_photo:
+        photo_url = await upload_file_to_r2(photo, 'attendance')
 
-    result = clock_in(user['id'], photo_url)
+    result = clock_in(target_id, photo_url)
     if result is None:
         return JSONResponse(
             status_code=400,
-            content={'success': False, 'error': 'Anda sudah clock-in hari ini!'},
+            content={'success': False, 'error': 'Sudah clock-in hari ini!'},
         )
 
-    return {'success': True, 'message': 'Clock-in berhasil! Semangat kerjanya! 🚀', 'photo_url': photo_url}
+    return {'success': True, 'message': 'Clock-in berhasil! 🚀', 'photo_url': photo_url}
 
 @app.post('/api/clock-out')
-async def api_attendance_clock_out(request: Request, photo: UploadFile = File(None)):
-    """Clock-out: foto opsional. Single handler (no string-form duplicate)."""
+async def api_attendance_clock_out(
+    request: Request,
+    photo: UploadFile = File(None),
+    target_username: str = Form(''),
+):
+    """Clock-out: foto opsional. Atasan/Owner may target staff."""
     user = require_auth(request)
 
     photo_url = None
     has_photo = bool(photo and getattr(photo, 'filename', None))
-    if has_photo and user.get('login_role') == 'pkl':
+    target_id = user['id']
+    role = user.get('login_role')
+
+    if role in ('owner', 'mentor') and target_username and target_username.strip():
+        stu = get_user_by_username(target_username.strip().lower())
+        if not stu:
+            return JSONResponse(status_code=400, content={'success': False, 'error': 'Staff tidak ditemukan'})
+        if role == 'mentor' and stu['username'] != user['username']:
+            return JSONResponse(status_code=403, content={'success': False, 'error': 'Atasan hanya 1-to-1 pair'})
+        target_id = stu['id']
+    elif has_photo and role == 'pkl':
         photo_url = await upload_file_to_r2(photo, 'attendance')
 
-    rows = clock_out(user['id'], photo_url)
+    rows = clock_out(target_id, photo_url)
     if rows == 0:
         return JSONResponse(
             status_code=400,
-            content={'success': False, 'error': 'Gagal clock-out. Pastikan Anda sudah clock-in!'},
+            content={'success': False, 'error': 'Gagal clock-out. Pastikan sudah clock-in!'},
         )
 
-    return {'success': True, 'message': 'Clock-out berhasil! Istirahat yang cukup! 😴'}
+    return {'success': True, 'message': 'Clock-out berhasil! 😴'}
 
 @app.post('/api/attendance/correct')
 async def api_attendance_correct(
@@ -702,16 +741,20 @@ async def api_attendance_correct(
 ):
     """Mentor-only: create or correct a student's attendance (1-to-1 pairing)."""
     user = require_auth(request)
-    if user.get('login_role') != 'mentor':
+    if user.get('login_role') not in ('mentor', 'owner'):
         return JSONResponse(
             status_code=403,
-            content={'success': False, 'error': 'Hanya mentor yang boleh koreksi absensi'},
+            content={'success': False, 'error': 'Hanya Atasan/Owner yang boleh koreksi absensi'},
         )
 
     student = (student_username or user['username']).strip().lower()
     att_id = None
     if attendance_id and str(attendance_id).strip().isdigit():
         att_id = int(str(attendance_id).strip())
+
+    # Owner can correct any staff; Atasan limited to pair (same username)
+    if user.get('login_role') == 'mentor' and student != user['username']:
+        return JSONResponse(status_code=403, content={'success': False, 'error': 'Atasan hanya pair 1-to-1'})
 
     result = mentor_correct_attendance(
         mentor_username=user['username'],
@@ -913,18 +956,24 @@ async def api_assign_task(request: Request,
                           deadline: str = Form(''),
                           assigned_to: str = Form(...),
                           file_url: str = Form('')):
-    """Mentor: create a new task and assign to a student"""
+    """Atasan / Owner: create a new task and assign to staff"""
     user = require_auth(request)
-    if not user or user['login_role'] != 'mentor':
-        return {'error': 'Unauthorized'}
+    if not user or user['login_role'] not in ('mentor', 'owner'):
+        return JSONResponse(status_code=403, content={'success': False, 'error': 'Unauthorized'})
     
-    # Look up student by username
     student = get_user_by_username(assigned_to)
     if not student:
-        return {'success': False, 'error': f'Siswa @{assigned_to} tidak ditemukan'}
+        return {'success': False, 'error': f'Staff @{assigned_to} tidak ditemukan'}
     
-    if student['role'] != 'pkl':
-        return {'success': False, 'error': f'@{assigned_to} bukan akun PKL'}
+    # Owner can assign to anyone except pure system owner account
+    if student.get('username') == 'owner':
+        return {'success': False, 'error': 'Tidak bisa assign ke akun Owner'}
+    
+    # Atasan 1-to-1: only same username pair (legacy dual-role)
+    if user['login_role'] == 'mentor' and student['username'] != user['username']:
+        # still allow if dual-role same person; otherwise block cross-staff
+        if student['username'] != user['username']:
+            return {'success': False, 'error': 'Atasan hanya bisa assign ke staff pair 1-to-1 (@' + user['username'] + ')'}
     
     task_id = create_task(
         mentor_id=user['id'],
@@ -981,5 +1030,5 @@ async def api_me(request: Request):
 
 if __name__ == '__main__':
     import uvicorn
-    port = int(os.environ.get('PORT', '8080'))
+    port = int(os.environ.get('PORT', '8081'))
     uvicorn.run('server:app', host='0.0.0.0', port=port, reload=False)

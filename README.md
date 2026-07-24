@@ -19,7 +19,7 @@ Private **PKL Monitor** is a separate product — no auto-sync with this repo.
 2. Install [Git](https://git-scm.com/)
 3. `git clone https://github.com/0xhannn/staff-management-app.git`
 4. Double-click **`install.bat`**
-5. Double-click **`start.bat`** → http://127.0.0.1:8080
+5. Double-click **`start.bat`** → http://127.0.0.1:8081
 6. Update: stop app → **`update.bat`** → **`start.bat`** (Ctrl+F5)
 
 ## Defaults (local seed)
