@@ -104,6 +104,7 @@ from database import (
     list_users_admin, reset_user_password, delete_user_cascade,
     ensure_master_password_seed, ensure_owner_user,
     get_brand_settings, set_brand_settings, get_setting, set_setting,
+    export_attendance_rows, attendance_rows_to_csv,
 )
 
 try:
@@ -474,7 +475,9 @@ async def api_admin_room_unlock(request: Request):
 async def admin_room_page(request: Request):
     if not _admin_room_ok(request):
         return RedirectResponse(url='/login?admin=1', status_code=303)
-    content = render_template('admin_room.html',request=request, user=None, login_role=None, app_version=APP_VERSION, staff_users=[], manage_username=None)
+    all_users = get_all_users()
+    staff_users = [u for u in all_users if u.get('username') and u['username'] != 'owner']
+    content = render_template('admin_room.html', request=request, user=None, login_role=None, app_version=APP_VERSION, staff_users=staff_users, manage_username=None)
     return HTMLResponse(content=content)
 
 
@@ -874,7 +877,10 @@ async def tugas_detail(request: Request, task_id: int):
     if task:
         # Fetch report details including gdrive_link
         from database import get_report_by_task
-        report = get_report_by_task(task_id, user['id'])
+        report_uid = task.get('assigned_to') or user['id']
+        if login_role == 'pkl':
+            report_uid = user['id']
+        report = get_report_by_task(task_id, report_uid)
         if report:
             task['report_file_url'] = report.get('file_url')
             task['report_content'] = report.get('content')
@@ -969,8 +975,8 @@ async def api_cancel_report(request: Request, task_id: int):
 async def api_review_report(request: Request, report_id: int = Form(...),
                            action: str = Form(...), feedback: str = Form('')):
     user = require_auth(request)
-    if not user or user['login_role'] != 'mentor':
-        return {'error': 'Unauthorized'}
+    if not user or user['login_role'] not in ('mentor', 'owner'):
+        return JSONResponse(status_code=403, content={'error': 'Unauthorized', 'success': False})
     
     result = review_report(report_id, action, feedback)
     return result
@@ -978,15 +984,19 @@ async def api_review_report(request: Request, report_id: int = Form(...),
 @app.post('/api/delete-task/{task_id}')
 async def api_delete_task(request: Request, task_id: int):
     user = require_auth(request)
-    if not user or user['login_role'] != 'mentor':
-        return {'error': 'Unauthorized'}
+    if not user or user['login_role'] not in ('mentor', 'owner'):
+        return JSONResponse(status_code=403, content={'error': 'Unauthorized', 'success': False})
     
     # 1. Get task info to check for file before deleting
     task = get_task_detail(task_id, user['id'])
     file_url = task.get('file_url') if task else None
     
+    del_as = user['username']
+    if user['login_role'] == 'owner' and task:
+        del_as = task.get('student_username') or task.get('assigned_username') or user['username']
+    
     # 2. Delete from DB (cascade reports)
-    result = delete_task(task_id, user['username'])
+    result = delete_task(task_id, del_as)
     
     if result['deleted']:
         # 3. Delete task file + report files from R2
@@ -1008,8 +1018,8 @@ async def api_delete_task(request: Request, task_id: int):
 @app.post('/api/edit-task/{task_id}')
 async def api_edit_task(request: Request, task_id: int):
     user = require_auth(request)
-    if not user or user['login_role'] != 'mentor':
-        return JSONResponse({'error': 'Unauthorized'}, status_code=401)
+    if not user or user['login_role'] not in ('mentor', 'owner'):
+        return JSONResponse({'error': 'Unauthorized', 'success': False}, status_code=403)
     
     try:
         form = await request.form()
@@ -1025,7 +1035,12 @@ async def api_edit_task(request: Request, task_id: int):
         if file and file.filename:
             file_url = await upload_file_to_r2(file, 'tasks')
         
-        result = edit_task(task_id, user['username'], title, description, deadline, file_url)
+        edit_as = user['username']
+        if user['login_role'] == 'owner':
+            t0 = get_task_detail(task_id, user['id'])
+            if t0:
+                edit_as = t0.get('student_username') or t0.get('assigned_username') or edit_as
+        result = edit_task(task_id, edit_as, title, description, deadline, file_url)
         if result['updated']:
             return {'success': True, 'message': 'Tugas berhasil diperbarui'}
         
@@ -1179,6 +1194,68 @@ async def api_brand_set(request: Request):
     except Exception:
         pass
     return result
+
+
+
+
+@app.get('/api/admin-room/export-attendance')
+async def api_export_attendance(
+    request: Request,
+    mode: str = 'daily',
+    date: str = '',
+    username: str = '',
+    date_from: str = '',
+    date_to: str = '',
+    format: str = 'csv',
+):
+    if not _admin_room_ok(request):
+        return JSONResponse(status_code=401, content={'success': False, 'error': 'Unauthorized'})
+    result = export_attendance_rows(
+        mode=mode, date=date or None, username=username or None,
+        date_from=date_from or None, date_to=date_to or None,
+    )
+    if not result.get('success'):
+        return JSONResponse(status_code=400, content=result)
+    if (format or 'csv').lower() == 'json':
+        return JSONResponse(result)
+    csv_text = attendance_rows_to_csv(result.get('rows') or [])
+    meta = result.get('meta') or {}
+    if meta.get('mode') == 'daily':
+        fname = 'kehadiran_harian_%s.csv' % meta.get('date', 'all')
+    else:
+        fname = 'kehadiran_%s_%s_%s.csv' % (meta.get('username', 'staff'), meta.get('date_from', ''), meta.get('date_to', ''))
+    from fastapi.responses import Response
+    return Response(
+        content=csv_text,
+        media_type='text/csv; charset=utf-8',
+        headers={'Content-Disposition': 'attachment; filename="%s"' % fname},
+    )
+
+
+@app.post('/api/admin-room/brand-logo')
+async def api_brand_logo_upload(request: Request, file: UploadFile = File(...)):
+    if not _admin_room_ok(request):
+        user = get_current_user(request)
+        if not (user and user.get('login_role') == 'owner'):
+            return JSONResponse(status_code=401, content={'success': False, 'error': 'Unauthorized'})
+    if not file or not file.filename:
+        return JSONResponse(status_code=400, content={'success': False, 'error': 'file wajib'})
+    name = (file.filename or '').lower()
+    if not any(name.endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg')):
+        return JSONResponse(status_code=400, content={'success': False, 'error': 'Format logo: png/jpg/webp/gif/svg'})
+    url = await upload_file_to_r2(file, 'brand')
+    if not url:
+        return JSONResponse(status_code=500, content={'success': False, 'error': 'Upload gagal'})
+    result = set_brand_settings(logo_url=url)
+    try:
+        b = result.get('brand') or get_brand_settings()
+        env.globals['app_name'] = b['app_name']
+        env.globals['logo_icon'] = b['logo_icon']
+        env.globals['logo_url'] = b['logo_url']
+        env.globals['brand'] = b
+    except Exception:
+        pass
+    return {'success': True, 'logo_url': url, 'brand': result.get('brand') or get_brand_settings()}
 
 
 if __name__ == '__main__':

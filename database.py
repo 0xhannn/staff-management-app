@@ -1169,6 +1169,101 @@ def set_brand_settings(app_name: str = None, logo_icon: str = None, logo_url: st
     return {'success': True, 'brand': get_brand_settings()}
 
 
+
+
+def export_attendance_rows(mode: str = 'daily', date: str = None, username: str = None,
+                           date_from: str = None, date_to: str = None) -> dict:
+    """Export attendance for Admin Room.
+    mode=daily: all staff for one date
+    mode=staff: one staff date_from..date_to (max 31 days inclusive)
+    """
+    from datetime import datetime as _dt, timedelta as _td
+    mode = (mode or 'daily').lower().strip()
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('PRAGMA table_info(attendance)')
+    cols = {row[1] for row in cur.fetchall()}
+    photo_sel = 'a.photo_url' if 'photo_url' in cols else "'' as photo_url"
+    rows = []
+    meta = {'mode': mode}
+
+    if mode == 'daily':
+        d = (date or '').strip()
+        if not d:
+            d = (_dt.utcnow() + _td(hours=7)).strftime('%Y-%m-%d')
+        meta['date'] = d
+        sql = (
+            "SELECT a.id, u.username, u.nama, a.date, a.clock_in, a.clock_out, a.status, "
+            + photo_sel +
+            " FROM attendance a JOIN users u ON u.id = a.user_id "
+            "WHERE a.date = ? AND u.username != 'owner' "
+            "ORDER BY u.username COLLATE NOCASE"
+        )
+        cur.execute(sql, (d,))
+        rows = [dict(r) for r in cur.fetchall()]
+    elif mode == 'staff':
+        uname = (username or '').strip().lower()
+        if not uname or uname == 'owner':
+            conn.close()
+            return {'success': False, 'error': 'username staff wajib'}
+        u = get_user_by_username(uname)
+        if not u:
+            conn.close()
+            return {'success': False, 'error': 'Staff @%s tidak ditemukan' % uname}
+        df = (date_from or '').strip()
+        dt = (date_to or '').strip()
+        if not df or not dt:
+            conn.close()
+            return {'success': False, 'error': 'date_from dan date_to wajib (YYYY-MM-DD)'}
+        try:
+            d0 = _dt.strptime(df, '%Y-%m-%d').date()
+            d1 = _dt.strptime(dt, '%Y-%m-%d').date()
+        except ValueError:
+            conn.close()
+            return {'success': False, 'error': 'Format tanggal harus YYYY-MM-DD'}
+        if d1 < d0:
+            conn.close()
+            return {'success': False, 'error': 'date_to harus >= date_from'}
+        if (d1 - d0).days > 30:
+            conn.close()
+            return {'success': False, 'error': 'Maksimal rentang 31 hari'}
+        meta.update({'username': uname, 'date_from': df, 'date_to': dt, 'nama': u.get('nama')})
+        sql = (
+            "SELECT a.id, u.username, u.nama, a.date, a.clock_in, a.clock_out, a.status, "
+            + photo_sel +
+            " FROM attendance a JOIN users u ON u.id = a.user_id "
+            "WHERE u.id = ? AND a.date >= ? AND a.date <= ? "
+            "ORDER BY a.date ASC"
+        )
+        cur.execute(sql, (u['id'], df, dt))
+        rows = [dict(r) for r in cur.fetchall()]
+    else:
+        conn.close()
+        return {'success': False, 'error': 'mode harus daily|staff'}
+
+    conn.close()
+    for r in rows:
+        r['clock_in'] = r.get('clock_in') or ''
+        r['clock_out'] = r.get('clock_out') or ''
+        r['status'] = r.get('status') or 'present'
+        r['photo_url'] = r.get('photo_url') or ''
+    return {'success': True, 'meta': meta, 'rows': rows, 'count': len(rows)}
+
+
+def attendance_rows_to_csv(rows: list) -> str:
+    import csv, io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(['username', 'nama', 'date', 'clock_in', 'clock_out', 'status', 'photo_url'])
+    for r in rows:
+        w.writerow([
+            r.get('username', ''), r.get('nama', ''), r.get('date', ''),
+            r.get('clock_in', ''), r.get('clock_out', ''), r.get('status', ''),
+            r.get('photo_url', ''),
+        ])
+    return buf.getvalue()
+
+
 def list_users_admin():
     """All users for Admin Room (no password hashes exposed)."""
     conn = get_db()
@@ -1203,10 +1298,21 @@ def reset_user_password(username: str, mode: str = 'both', new_password: str = '
 
 
 def delete_user_cascade(username: str) -> dict:
-    """Delete user + sessions + attendance + tasks + reports. Returns file URLs for R2 cleanup."""
+    """Delete user + sessions + attendance + tasks + reports. Returns file URLs for R2 cleanup.
+    Safety: cannot delete system owner; must leave at least 1 staff.
+    """
     user = get_user_by_username(username)
     if not user:
         return {'success': False, 'error': 'User tidak ditemukan'}
+    if (username or '').strip().lower() == 'owner':
+        return {'success': False, 'error': 'Akun sistem Manager tidak bisa dihapus'}
+    conn0 = get_db()
+    cur0 = conn0.cursor()
+    cur0.execute("SELECT COUNT(*) AS c FROM users WHERE username != 'owner'")
+    staff_count = int(cur0.fetchone()['c'] or 0)
+    conn0.close()
+    if staff_count <= 1:
+        return {'success': False, 'error': 'Wajib sisakan minimal 1 staff. Tidak bisa hapus user terakhir.'}
     uid = user['id']
     conn = get_db()
     cur = conn.cursor()

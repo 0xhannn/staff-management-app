@@ -71,6 +71,55 @@
     </section>
 
     
+    
+    <!-- Card: Export kehadiran -->
+    <section class="ar-card p-5">
+      <h2 class="text-white font-semibold mb-1"><i class="fas fa-file-csv mr-2 text-emerald-400"></i>Download Data Kehadiran</h2>
+      <p class="text-xs text-gray-500 mb-4">CSV · mode harian (semua staff, 1 hari) atau per-staff (custom, maks 31 hari).</p>
+
+      <div class="flex gap-2 mb-4">
+        <button type="button" id="ex-mode-daily" onclick="setExportMode('daily')"
+                class="flex-1 py-2 rounded-xl text-sm font-medium border border-emerald-500/40 bg-emerald-500/15 text-emerald-400">Harian</button>
+        <button type="button" id="ex-mode-staff" onclick="setExportMode('staff')"
+                class="flex-1 py-2 rounded-xl text-sm font-medium border border-gray-700 bg-gray-800 text-gray-300">Per Staff</button>
+      </div>
+
+      <div id="ex-daily" class="grid gap-3 max-w-md">
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5">Tanggal</label>
+          <input type="date" id="ex-date" class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm">
+        </div>
+      </div>
+
+      <div id="ex-staff" class="hidden grid gap-3 max-w-md">
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5">Staff</label>
+          <select id="ex-username" class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm">
+            <option value="">— pilih staff —</option>
+            {% for u in staff_users|default([]) %}
+            <option value="{{ u.username }}">@{{ u.username }} — {{ u.nama }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5">Dari</label>
+            <input type="date" id="ex-from" class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5">Sampai</label>
+            <input type="date" id="ex-to" class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm">
+          </div>
+        </div>
+        <p class="text-[11px] text-gray-600">Maksimal 31 hari (termasuk ujung).</p>
+      </div>
+
+      <div id="ex-status" class="text-xs mt-3"></div>
+      <button type="button" onclick="downloadAttendance()" class="mt-3 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-sm">
+        <i class="fas fa-download mr-1"></i>Download CSV
+      </button>
+    </section>
+
     <!-- Card 3: Brand (logo + app name) -->
     <section class="ar-card p-5">
       <h2 class="text-white font-semibold mb-1"><i class="fas fa-palette mr-2 text-blue-400"></i>Brand Aplikasi</h2>
@@ -83,7 +132,16 @@
                  placeholder="Staff Management" value="{{ app_name|default('Staff Management') }}">
         </div>
         <div>
-          <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5">Logo URL (opsional)</label>
+          <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5">Upload logo (gambar)</label>
+          <input type="file" id="brand-logo-file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                 class="w-full text-sm text-gray-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-blue-500 file:text-white file:text-xs file:font-semibold">
+          <p class="text-[11px] text-gray-600 mt-1">PNG/JPG/WEBP · otomatis jadi logo header</p>
+          <div id="brand-logo-preview" class="mt-2 {% if not logo_url|default('') %}hidden{% endif %}">
+            <img src="{{ logo_url|default('') }}" alt="logo" class="w-12 h-12 rounded-lg object-cover bg-gray-800 border border-gray-700" id="brand-logo-img">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5">Logo URL (opsional / manual)</label>
           <input type="text" id="brand-logo-url"
                  class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm"
                  placeholder="https://... atau /uploads/logo.png" value="{{ logo_url|default('') }}">
@@ -314,5 +372,100 @@ async function saveBrand() {
     st.className = 'text-xs text-red-400';
   }
 }
+
+let exportMode = 'daily';
+function setExportMode(m) {
+  exportMode = m;
+  const d = document.getElementById('ex-daily');
+  const s = document.getElementById('ex-staff');
+  const bd = document.getElementById('ex-mode-daily');
+  const bs = document.getElementById('ex-mode-staff');
+  if (m === 'daily') {
+    d.classList.remove('hidden'); s.classList.add('hidden');
+    bd.className = 'flex-1 py-2 rounded-xl text-sm font-medium border border-emerald-500/40 bg-emerald-500/15 text-emerald-400';
+    bs.className = 'flex-1 py-2 rounded-xl text-sm font-medium border border-gray-700 bg-gray-800 text-gray-300';
+  } else {
+    s.classList.remove('hidden'); d.classList.add('hidden');
+    bs.className = 'flex-1 py-2 rounded-xl text-sm font-medium border border-emerald-500/40 bg-emerald-500/15 text-emerald-400';
+    bd.className = 'flex-1 py-2 rounded-xl text-sm font-medium border border-gray-700 bg-gray-800 text-gray-300';
+  }
+}
+function downloadAttendance() {
+  const st = document.getElementById('ex-status');
+  st.textContent = 'Menyiapkan CSV…'; st.className = 'text-xs text-gray-400 mt-3';
+  let url = '/api/admin-room/export-attendance?format=csv&mode=' + encodeURIComponent(exportMode);
+  if (exportMode === 'daily') {
+    const date = document.getElementById('ex-date').value;
+    if (!date) { st.textContent = 'Pilih tanggal dulu'; st.className = 'text-xs text-red-400 mt-3'; return; }
+    url += '&date=' + encodeURIComponent(date);
+  } else {
+    const u = document.getElementById('ex-username').value;
+    const f = document.getElementById('ex-from').value;
+    const t = document.getElementById('ex-to').value;
+    if (!u || !f || !t) { st.textContent = 'Staff + rentang tanggal wajib'; st.className = 'text-xs text-red-400 mt-3'; return; }
+    // client-side 31 day check
+    const d0 = new Date(f), d1 = new Date(t);
+    const days = Math.round((d1 - d0) / 86400000) + 1;
+    if (days > 31 || days < 1) { st.textContent = 'Rentang harus 1–31 hari'; st.className = 'text-xs text-red-400 mt-3'; return; }
+    url += '&username=' + encodeURIComponent(u) + '&date_from=' + encodeURIComponent(f) + '&date_to=' + encodeURIComponent(t);
+  }
+  // download with credentials
+  fetch(url, { credentials: 'same-origin' }).then(async r => {
+    if (!r.ok) {
+      let msg = 'Gagal download';
+      try { const j = await r.json(); msg = j.error || msg; } catch(e) {}
+      st.textContent = msg; st.className = 'text-xs text-red-400 mt-3';
+      return;
+    }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    const cd = r.headers.get('Content-Disposition') || '';
+    let fname = 'kehadiran.csv';
+    const m = /filename="([^"]+)"/.exec(cd);
+    if (m) fname = m[1];
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    st.textContent = 'Download dimulai: ' + fname;
+    st.className = 'text-xs text-emerald-400 mt-3';
+  }).catch(e => {
+    st.textContent = String(e); st.className = 'text-xs text-red-400 mt-3';
+  });
+}
+// default date = today
+(function(){
+  const el = document.getElementById('ex-date');
+  if (el && !el.value) {
+    const n = new Date();
+    el.value = n.toISOString().slice(0,10);
+  }
+})();
+
+// logo file upload on change + on saveBrand
+document.getElementById('brand-logo-file')?.addEventListener('change', async (ev) => {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  const st = document.getElementById('brand-status');
+  st.textContent = 'Upload logo…'; st.className = 'text-xs text-gray-400';
+  const fd = new FormData();
+  fd.append('file', f);
+  try {
+    const r = await fetch('/api/admin-room/brand-logo', { method: 'POST', body: fd, credentials: 'same-origin' });
+    const j = await r.json();
+    if (!r.ok || !j.success) {
+      st.textContent = j.error || 'Upload gagal'; st.className = 'text-xs text-red-400';
+      return;
+    }
+    document.getElementById('brand-logo-url').value = j.logo_url || '';
+    const img = document.getElementById('brand-logo-img');
+    const box = document.getElementById('brand-logo-preview');
+    if (img) img.src = j.logo_url;
+    if (box) box.classList.remove('hidden');
+    st.textContent = 'Logo terupload. Refresh login/dashboard untuk lihat.';
+    st.className = 'text-xs text-emerald-400';
+  } catch (e) {
+    st.textContent = String(e); st.className = 'text-xs text-red-400';
+  }
+});
 </script>
 {% endblock %}
