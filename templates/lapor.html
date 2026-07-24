@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}Laporkan Tugas #{{ task.id }} — Staff Management{% endblock %}
+
+{% block extra_head %}
+<style>
+    .dropzone {
+        border: 2px dashed #374151;
+        border-radius: 1rem;
+        transition: all 0.2s;
+    }
+    .dropzone:hover, .dropzone.drag-over {
+        border-color: #10b981;
+        background-color: rgba(16, 185, 129, 0.05);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="max-w-2xl mx-auto">
+
+    <!-- Back -->
+    <div class="mb-6">
+        <a href="/tugas/{{ task.id }}" class="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition">
+            <i class="fas fa-arrow-left"></i>
+            Kembali ke Detail Tugas
+        </a>
+    </div>
+
+    <!-- Header -->
+    <div class="mb-6">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                <span class="text-emerald-400 font-bold text-sm">#{{ task.id }}</span>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-white">Laporkan Tugas</h1>
+                <p class="text-sm text-gray-400">{{ task.title }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Form card -->
+    <div class="bg-gray-900/60 border border-gray-800 rounded-2xl overflow-hidden">
+        
+        <!-- Task info bar -->
+        <div class="bg-gray-950/50 px-5 py-4 border-b border-gray-800 flex items-center gap-4 flex-wrap">
+            <div>
+                <div class="text-[10px] text-gray-500 uppercase tracking-wider">Tugas</div>
+                <div class="text-sm font-semibold text-white">{{ task.title }}</div>
+            </div>
+            {% if task.deadline %}
+            <div class="ml-auto">
+                <div class="text-[10px] text-gray-500 uppercase tracking-wider">Deadline</div>
+                <div class="text-sm text-amber-400 font-medium">{{ task.deadline }}</div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Upload form -->
+        <div class="p-5 space-y-5">
+            
+            <!-- File upload -->
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-2 font-medium">
+                    <i class="fas fa-paperclip mr-1"></i>File Laporan
+                </label>
+                
+                <div id="dropzone" class="dropzone p-8 text-center cursor-pointer bg-gray-950/40"
+                     onclick="document.getElementById('file-input').click()">
+                    <i class="fas fa-cloud-upload-alt text-3xl text-gray-500 mb-2 block" id="upload-icon"></i>
+                    <p class="text-sm text-gray-400" id="file-label">Klik untuk upload file (PDF, DOCX, JPG, PNG)</p>
+                    <p class="text-xs text-gray-600 mt-1">Max 10MB</p>
+                </div>
+                <input type="file" id="file-input" class="hidden" accept=".pdf,.docx,.doc,.jpg,.jpeg,.png">
+                <input type="hidden" id="file-url" value="">
+                
+                <!-- Preview -->
+                <div id="file-preview" class="hidden mt-3 flex items-center gap-3 p-3 bg-gray-800 rounded-xl border border-emerald-500/30">
+                    <i class="fas fa-file-alt text-emerald-400 text-lg"></i>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-white font-medium truncate" id="file-preview-name"></p>
+                        <p class="text-xs text-gray-500" id="file-preview-size"></p>
+                    </div>
+                    <button onclick="clearFile()" class="text-gray-500 hover:text-red-400 transition">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- GDrive Link -->
+            <div class="mb-5">
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-2 font-medium">
+                    <i class="fab fa-google-drive mr-1"></i>Link Folder GDrive
+                </label>
+                <input type="text" id="gdrive_link" 
+                      class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-emerald-500 transition"
+                      placeholder="https://drive.google.com/drive/folders/...">
+            </div>
+
+            <!-- Catatan -->
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-2 font-medium">
+                    <i class="fas fa-comment mr-1"></i>Catatan
+                    <span class="normal-case font-normal text-gray-600 ml-1">(opsional)</span>
+                </label>
+                <textarea id="catatan" rows="4" 
+                          class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-emerald-500 resize-none transition"
+                          placeholder="Jelaskan apa yang sudah kamu kerjakan, kesulitan yang dihadapi, atau catatan penting lainnya..."></textarea>
+            </div>
+
+            <!-- Submit button -->
+            <div>
+                <button id="btn-submit" onclick="submitReport()"
+                        class="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-700 disabled:text-gray-500 text-white py-3 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2">
+                    <i class="fas fa-paper-plane"></i>
+                    Kirim Laporan
+                </button>
+                <div id="submit-status" class="text-xs text-center mt-2"></div>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<script>
+let selectedFile = null;
+
+// ─── File selection ───
+const fileInput = document.getElementById('file-input');
+const dropzone  = document.getElementById('dropzone');
+
+fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) {
+        handleFile(fileInput.files[0]);
+    }
+});
+
+// Drag & drop
+dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('drag-over');
+});
+dropzone.addEventListener('dragleave', () => {
+    dropzone.classList.remove('drag-over');
+});
+dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) {
+        handleFile(e.dataTransfer.files[0]);
+    }
+});
+
+function handleFile(file) {
+    // Size check
+    if (file.size > 10 * 1024 * 1024) {
+        showStatus('error', 'File terlalu besar. Maksimal 10MB.');
+        return;
+    }
+
+    selectedFile = file;
+    document.getElementById('file-preview-name').textContent = file.name;
+    document.getElementById('file-preview-size').textContent = formatSize(file.size);
+    document.getElementById('file-preview').classList.remove('hidden');
+    document.getElementById('file-label').textContent = file.name;
+    document.getElementById('upload-icon').classList.remove('text-gray-500');
+    document.getElementById('upload-icon').classList.add('text-emerald-400');
+    showStatus('', '');
+}
+
+function clearFile() {
+    selectedFile = null;
+    fileInput.value = '';
+    document.getElementById('file-preview').classList.add('hidden');
+    document.getElementById('file-label').textContent = 'Klik untuk upload file (PDF, DOCX, JPG, PNG)';
+    const icon = document.getElementById('upload-icon');
+    icon.classList.remove('text-emerald-400');
+    icon.classList.add('text-gray-500');
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function showStatus(type, msg) {
+    const el = document.getElementById('submit-status');
+    if (!type) { el.textContent = ''; return; }
+    const icons = { success: 'fa-check', error: 'fa-times', info: 'fa-info' };
+    const colors = { success: 'text-emerald-400', error: 'text-red-400', info: 'text-blue-400' };
+    el.className = 'text-xs text-center mt-2 ' + (colors[type] || '');
+    el.innerHTML = msg ? '<i class="fas ' + (icons[type] || '') + ' mr-1"></i>' + msg : '';
+}
+
+async function submitReport() {
+    const btn = document.getElementById('btn-submit');
+    if (btn.disabled) return;
+    
+    const catatan = document.getElementById('catatan').value.trim();
+    let fileUrl = '';
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>Mengirim...';
+    
+    try {
+        // 1. Upload file if selected
+        if (selectedFile) {
+            showStatus('info', 'Mengupload file...');
+            const fdata = new FormData();
+            fdata.append('file', selectedFile);
+            
+            const uploadRes = await fetch('/api/upload-file', { method: 'POST', body: fdata });
+            const uploadData = await uploadRes.json();
+            
+            if (!uploadData.success) throw new Error(uploadData.error || 'Upload gagal');
+            fileUrl = uploadData.file_url;
+            showStatus('info', 'File ter-upload! Menyimpan laporan...');
+        }
+        
+        // 2. Submit report
+        const formData = new FormData();
+        formData.append('task_id', {{ task.id }});
+        formData.append('file_url', fileUrl);
+        formData.append('content', catatan);
+        formData.append('gdrive_link', document.getElementById('gdrive_link').value.trim());
+        
+        const submitRes = await fetch('/api/submit-report', { method: 'POST', body: formData });
+        const submitData = await submitRes.json();
+        
+        if (submitData.success) {
+            showStatus('success', 'Laporan berhasil dikirim! Mengalihkan...');
+            btn.innerHTML = '<i class="fas fa-check"></i>Berhasil!';
+            setTimeout(() => { window.location.href = '/tugas/{{ task.id }}'; }, 1200);
+        } else {
+            throw new Error(submitData.error || 'Submit gagal');
+        }
+    } catch (err) {
+        showStatus('error', err.message);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i>Kirim Ulang';
+    }
+}
+</script>
+
+{% endblock %}

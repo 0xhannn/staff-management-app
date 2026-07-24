@@ -1,0 +1,499 @@
+{% extends "base.html" %}
+
+{% block title %}Tugas #{{ task.id }} — Staff Management{% endblock %}
+
+{% block extra_head %}
+<style>
+    .badge { @apply text-xs px-2 py-0.5 rounded-full inline-block; }
+    .badge-review { @apply bg-yellow-500/20 text-yellow-400; }
+    .badge-accept  { @apply bg-emerald-500/20 text-emerald-400; }
+    .badge-reject  { @apply bg-red-500/20 text-red-400; }
+    .badge-pending { @apply bg-gray-700/50 text-gray-500; }
+    .card-section  { @apply bg-gray-900/60 border border-gray-800 rounded-2xl p-5; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Back button -->
+<div class="mb-6">
+    <a href="/dashboard#tugas" class="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition">
+        <i class="fas fa-arrow-left"></i>
+        Kembali ke Daftar Tugas
+    </a>
+</div>
+
+<!-- Page header -->
+<div class="mb-6">
+    <div class="flex items-center gap-3 mb-2">
+        <div class="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+            <span class="text-blue-400 font-bold text-lg">#{{ task.id }}</span>
+        </div>
+        <div>
+            <h1 class="text-2xl font-bold text-white">{{ task.title }}</h1>
+            <div class="flex items-center gap-2 mt-1 flex-wrap">
+                {% if login_role == 'pkl' %}
+                <span class="text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full">
+                    <i class="fas fa-user mr-0.5"></i>@{{ user.username }}
+                </span>
+                {% else %}
+                <span class="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full">
+                    <i class="fas fa-user mr-0.5"></i>@{{ task.student_username }}
+                </span>
+                {% endif %}
+                
+                {% if task.report_status == 'Menunggu Review' %}
+                <span class="badge badge-review">Menunggu Review</span>
+                {% elif task.report_status == 'Diterima' %}
+                <span class="badge badge-accept">Diterima ✓</span>
+                {% elif task.report_status == 'Ditolak' %}
+                <span class="badge badge-reject">Ditolak</span>
+                {% else %}
+                <span class="badge badge-pending">Belum Upload</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- Main content -->
+    <div class="lg:col-span-2 space-y-5">
+        
+        <!-- Task description -->
+        <div class="card-section">
+            <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Deskripsi Tugas</div>
+            <div class="text-sm text-gray-200">
+                {% if task.description %}
+                    {{ task.description }}
+                {% else %}
+                    <span class="text-gray-600 italic">Tidak ada deskripsi</span>
+                {% endif %}
+            </div>
+            {% if task.deadline %}
+            <div class="mt-3 text-xs text-gray-500">
+                Deadline: <span class="text-amber-400 font-medium">{{ task.deadline }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Mentor attachment -->
+        {% if task.file_url %}
+        <div class="card-section">
+            <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Lampiran Mentor</div>
+            {% if task.file_url.lower().endswith('.pdf') %}
+            <iframe src="{{ task.file_url }}" class="w-full h-80 border border-gray-700 rounded-xl"></iframe>
+            {% else %}
+            <a href="{{ task.file_url }}" target="_blank" 
+               class="inline-flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition">
+                <i class="fas fa-paperclip"></i>
+                Buka Lampiran
+                <i class="fas fa-external-link-alt text-xs"></i>
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Report section (if exists) -->
+        {% if task.report_id %}
+        <div class="card-section">
+            <div class="text-xs text-gray-500 uppercase tracking-wider mb-3">Laporan PKL</div>
+            
+            <div class="flex items-center gap-3 mb-3 flex-wrap">
+                {% if task.report_status == 'Menunggu Review' %}
+                <span class="badge badge-review">Menunggu Review</span>
+                {% elif task.report_status == 'Diterima' %}
+                <span class="badge badge-accept">Diterima ✓</span>
+                {% elif task.report_status == 'Ditolak' %}
+                <span class="badge badge-reject">Ditolak</span>
+                {% endif %}
+                
+                {% if task.report_submitted_at %}
+                <span class="text-xs text-gray-500">
+                    <i class="fas fa-clock mr-1"></i>{{ task.report_submitted_at }}
+                </span>
+                {% endif %}
+            </div>
+
+            {% if task.report_file_url %}
+                        <div class="mb-3">
+                            <a href="{{ task.report_file_url }}" target="_blank" 
+                               class="inline-flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition">
+                                <i class="fas fa-file-alt"></i>
+                                Buka/Download File Laporan
+                                <i class="fas fa-external-link-alt text-xs"></i>
+                            </a>
+                        </div
+                        {% endif %}
+
+                        {% if task.report_gdrive_link %}
+                        <div class="mb-3">
+                            <a href="{{ task.report_gdrive_link }}" target="_blank" 
+                               class="inline-flex items-center gap-2 text-sm text-emerald-400 hover:text-emerald-300 transition">
+                                <i class="fab fa-google-drive"></i>
+                                Buka Folder GDrive
+                                <i class="fas fa-external-link-alt text-xs"></i>
+                            </a>
+                        </div
+                        {% endif %}
+
+            {% if task.report_content %}
+            <div class="bg-gray-950 rounded-xl p-4 mb-3">
+                <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Isi Laporan</div>
+                <div class="text-sm text-gray-200 whitespace-pre-wrap">{{ task.report_content }}</div>
+            </div>
+            {% endif %}
+
+            {% if task.feedback %}
+            <div class="bg-gray-950 rounded-xl p-4">
+                <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Catatan Mentor</div>
+                <div class="text-sm text-gray-200">{{ task.feedback }}</div>
+            </div>
+            {% endif %}
+
+            <!-- Mentor review actions -->
+            {% if login_role == 'mentor' and task.report_status == 'Menunggu Review' %}
+            <div class="mt-4 flex gap-3" id="review-buttons">
+                <button onclick="reviewAction('accept')"
+                        class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 rounded-xl text-sm font-medium transition">
+                    <i class="fas fa-check mr-1"></i>Terima
+                </button>
+                <button onclick="reviewAction('reject')"
+                        class="flex-1 bg-red-500 hover:bg-red-600 text-white py-2.5 rounded-xl text-sm font-medium transition">
+                    <i class="fas fa-times mr-1"></i>Tolak
+                </button>
+            </div>
+            <div id="review-status" class="text-xs text-center mt-2"></div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- No report — PKL can upload -->
+        {% if not task.report_id and login_role == 'pkl' %}
+        <div class="card-section text-center">
+            <div class="text-sm text-gray-500 mb-4">
+                <i class="fas fa-inbox text-3xl text-gray-700 mb-3 block"></i>
+                Belum ada laporan yang di-submit
+            </div>
+            <a href="/lapor/{{ task.id }}" 
+               class="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2.5 rounded-xl text-sm font-medium transition">
+                <i class="fas fa-upload"></i>
+                Laporkan Tugas
+            </a>
+        </div>
+        {% endif %}
+
+        <!-- No report — PKL can re-upload after rejection -->
+        {% if task.report_id and task.report_status == 'Ditolak' and login_role == 'pkl' %}
+        <div class="card-section text-center">
+            <div class="text-sm text-red-400 mb-4">
+                <i class="fas fa-exclamation-triangle text-3xl text-red-500/30 mb-3 block"></i>
+                Laporan ditolak. Mohon perbaiki dan upload ulang.
+            </div>
+            <a href="/lapor/{{ task.id }}" 
+               class="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2.5 rounded-xl text-sm font-medium transition">
+                <i class="fas fa-upload"></i>
+                Upload Ulang
+            </a>
+        </div>
+        {% endif %}
+
+        <!-- PKL: Batal button if waiting review -->
+        {% if task.report_id and task.report_status == 'Menunggu Review' and login_role == 'pkl' %}
+        <div class="card-section text-center">
+            <div class="text-sm text-yellow-400 mb-4">
+                <i class="fas fa-clock text-3xl text-yellow-500/30 mb-3 block"></i>
+                Laporan sedang menunggu review mentor.
+            </div>
+            <button onclick="batalkanLaporan({{ task.id }})"
+                    class="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-6 py-2.5 rounded-xl text-sm font-medium transition">
+                <i class="fas fa-times"></i>
+                Batalkan Laporan
+            </button>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <!-- Sidebar -->
+    <div class="space-y-4">
+        
+        <!-- Task info -->
+        <div class="card-section">
+            <div class="text-xs text-gray-500 uppercase tracking-wider mb-3">Info Tugas</div>
+            <div class="space-y-2 text-sm">
+                <div class="flex justify-between">
+                    <span class="text-gray-500">ID</span>
+                    <span class="text-white font-medium">#{{ task.id }}</span>
+                </div>
+                {% if task.deadline %}
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Deadline</span>
+                    <span class="text-amber-400">{{ task.deadline }}</span>
+                </div>
+                {% endif %}
+                {% if login_role == 'pkl' %}
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Username</span>
+                    <span class="text-white">@{{ user.username }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Nama</span>
+                    <span class="text-white">{{ user.nama }}</span>
+                </div>
+                {% else %}
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Karyawan</span>
+                    <span class="text-white">@{{ task.student_username }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Nama PKL</span>
+                    <span class="text-white">{{ task.student_nama }}</span>
+                </div>
+                {% endif %}
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Status</span>
+                    {% if task.report_status == 'Menunggu Review' %}
+                    <span class="text-yellow-400">Menunggu Review</span>
+                    {% elif task.report_status == 'Diterima' %}
+                    <span class="text-emerald-400">Diterima</span>
+                    {% elif task.report_status == 'Ditolak' %}
+                    <span class="text-red-400">Ditolak</span>
+                    {% else %}
+                    <span class="text-gray-500">Belum Upload</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Action buttons: Kembali, Edit, Hapus -->
+        <div class="card-section">
+            <div class="grid grid-cols-3 gap-2">
+                <a href="/dashboard#tugas" 
+                   class="flex items-center justify-center gap-1.5 px-2 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs rounded-xl transition border border-gray-700">
+                    <i class="fas fa-arrow-left"></i>
+                    <span>Kembali</span>
+                </a>
+                {% if user.login_role == 'mentor' %}
+                <button onclick="openEditTugas()" 
+                        class="flex items-center justify-center gap-1.5 px-2 py-2.5 bg-blue-500/20 hover:bg-blue-500/40 text-blue-400 hover:text-blue-300 text-xs rounded-xl transition border border-blue-500/30">
+                    <i class="fas fa-edit"></i>
+                    <span>Edit</span>
+                    </button>
+
+                <button onclick="if(confirm('Yakin hapus tugas ini?')) deleteTugas({{ task.id }})" 
+                        class="flex items-center justify-center gap-1.5 px-2 py-2.5 bg-red-500/20 hover:bg-red-500/40 text-red-400 hover:text-red-300 text-xs rounded-xl transition border border-red-500/30">
+                    <i class="fas fa-trash"></i>
+                    <span>Hapus</span>
+                </button>
+                {% else %}
+                <div></div>
+                <div></div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Review form modal (small overlay) -->
+<div id="modal-edit-tugas" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center text-blue-400">
+                <i class="fas fa-edit"></i>
+            </div>
+            <h3 class="text-lg font-bold text-white">Edit Tugas</h3>
+            <button onclick="closeModal('modal-edit-tugas')" class="ml-auto text-gray-500 hover:text-white transition">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Judul Tugas *</label>
+                <input type="text" id="edit-task-title" class="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Deskripsi</label>
+                <textarea id="edit-task-desc" rows="3" class="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition resize-none"></textarea>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Deadline</label>
+                <input type="date" id="edit-task-deadline" class="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 uppercase tracking-wider mb-1">Lampiran File (Opsional)</label>
+                <input type="file" id="edit-task-file" class="w-full bg-gray-800 border border-gray-700 rounded-xl p-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition">
+            </div>
+        </div>
+        <div class="flex gap-3 mt-6">
+            <button onclick="closeModal('modal-edit-tugas')" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-gray-800 hover:bg-gray-700 text-gray-400 transition">Batal</button>
+            <button id="btn-save-edit" class="flex-1 py-2.5 rounded-xl text-sm font-medium bg-blue-500 hover:bg-blue-600 text-white transition">Simpan</button>
+        </div>
+        <div id="edit-status" class="text-xs text-center mt-3"></div>
+    </div>
+</div>
+
+<div id="modal-review" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm">
+        <h3 class="text-lg font-bold text-white mb-1" id="review-modal-title">Review Laporan</h3>
+        <p class="text-sm text-gray-500 mb-4" id="review-modal-desc">Berikan catatan untuk laporan ini.</p>
+        <textarea id="review-feedback" rows="3" placeholder="Catatan (opsional untuk Terima, wajib untuk Tolak)"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition resize-none"></textarea>
+        <div class="flex gap-3 mt-4">
+            <button id="review-confirm-btn" onclick="confirmReview()"
+                    class="flex-1 py-2.5 rounded-xl text-sm font-medium transition text-white">
+                Konfirmasi
+            </button>
+            <button onclick="closeReviewModal()"
+                    class="px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-800 hover:bg-gray-700 text-gray-400 transition">
+                Batal
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+
+function closeModal(modalId) {
+    document.getElementById(modalId).classList.add('hidden');
+}
+// ─── Review action ───
+let pendingAction = '';
+
+function reviewAction(action) {
+    pendingAction = action;
+    const modal = document.getElementById('modal-review');
+    const title = document.getElementById('review-modal-title');
+    const desc = document.getElementById('review-modal-desc');
+    const btn = document.getElementById('review-confirm-btn');
+    const feedback = document.getElementById('review-feedback');
+    
+    feedback.value = action === 'accept' ? 'Tugas sudah sesuai. Good job!' : '';
+    title.textContent = action === 'accept' ? 'Terima Laporan' : 'Tolak Laporan';
+    desc.textContent = action === 'accept' 
+        ? 'Berikan catatan opsional untuk PKL.' 
+        : 'Berikan alasan penolakan.';
+    btn.className = 'flex-1 py-2.5 rounded-xl text-sm font-medium transition text-white ' + 
+        (action === 'accept' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600');
+    
+    modal.classList.remove('hidden');
+}
+
+function closeReviewModal() {
+    document.getElementById('modal-review').classList.add('hidden');
+}
+
+function confirmReview() {
+    const feedback = document.getElementById('review-feedback').value;
+    const statusEl = document.getElementById('review-status');
+    statusEl.innerHTML = '<span class="text-blue-400"><i class="fas fa-spinner fa-spin mr-1"></i>Memproses...</span>';
+    
+    const formData = new FormData();
+    formData.append('report_id', {{ task.report_id }});
+    formData.append('action', pendingAction);
+    formData.append('feedback', feedback);
+    
+    fetch('/api/review-report', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            statusEl.innerHTML = '<span class="text-emerald-400"><i class="fas fa-check mr-1"></i>' + 
+                (pendingAction === 'accept' ? 'Diterima!' : 'Ditolak!') + '</span>';
+            document.getElementById('review-buttons')?.remove();
+            closeReviewModal();
+            // Reload after 1s to show updated status
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            statusEl.innerHTML = '<span class="text-red-400"><i class="fas fa-times mr-1"></i>Gagal: ' + (data.error || 'Unknown error') + '</span>';
+        }
+    })
+    .catch(err => {
+        statusEl.innerHTML = '<span class="text-red-400"><i class="fas fa-times mr-1"></i>Error: ' + err + '</span>';
+    });
+}
+
+function batalkanLaporan(taskId) {
+    if (!confirm('Batalkan laporan ini?')) return;
+    
+    fetch('/api/cancel-report/' + taskId, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Gagal: ' + (data.error || 'Unknown error'));
+        }
+    });
+}
+
+function openEditTugas() {
+    const task = {
+        title: {{ task.title|tojson }},
+        desc: {{ task.description|tojson }},
+        deadline: {{ task.deadline|tojson }}
+    };
+    document.getElementById('edit-task-title').value = task.title;
+    document.getElementById('edit-task-desc').value = task.desc;
+    document.getElementById('edit-task-deadline').value = task.deadline;
+    document.getElementById('modal-edit-tugas').classList.remove('hidden');
+}
+
+document.getElementById('btn-save-edit')?.addEventListener('click', async () => {
+    const title = document.getElementById('edit-task-title').value.trim();
+    const desc = document.getElementById('edit-task-desc').value.trim();
+    const deadline = document.getElementById('edit-task-deadline').value;
+    const fileInput = document.getElementById('edit-task-file');
+    const statusEl = document.getElementById('edit-status');
+    
+    if (!title) {
+        statusEl.innerHTML = '<span class="text-red-400">Judul harus diisi!</span>';
+        return;
+    }
+
+    statusEl.innerHTML = '<span class="text-gray-400">Menyimpan...</span>';
+    
+    try {
+        const formData = new FormData();
+        formData.append('title', title);
+        formData.append('description', desc);
+        formData.append('deadline', deadline);
+        if (fileInput.files.length > 0) {
+            formData.append('file', fileInput.files[0]);
+        }
+
+        const res = await fetch(`/api/edit-task/{{ task.id }}`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        if (data.success) {
+            statusEl.innerHTML = '<span class="text-emerald-400">Berhasil disimpan!</span>';
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            statusEl.innerHTML = '<span class="text-red-400">' + (data.error || 'Gagal') + '</span>';
+        }
+    } catch(e) {
+        statusEl.innerHTML = '<span class="text-red-400">Error: ' + e.message + '</span>';
+    }
+});
+
+
+async function deleteTugas(taskId) {
+    try {
+        console.log('Deleting task:', taskId);
+        const res = await fetch(`/api/delete-task/${taskId}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            location.href = '/dashboard#tugas';
+        } else {
+            alert('Gagal: ' + (data.error || 'Unknown error'));
+        }
+    } catch(e) {
+        alert('Error: ' + e.message);
+    }
+}
+</script>
+
+{% endblock %}

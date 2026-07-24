@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Absensi — Staff Management{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header -->
+    <div>
+        <h1 class="text-xl font-bold text-white">
+            <i class="fas fa-calendar-check mr-2 text-blue-400"></i>Absensi
+        </h1>
+        <p class="text-gray-500 text-sm mt-0.5">
+            {% if user.role == 'mentor' %}Lihat semua data kehadiran staff{% else %}Catat kehadiran harian kamu{% endif %}
+        </p>
+    </div>
+
+    <!-- Clock In/Out Panel (PKL only) -->
+    {% if user.role == 'pkl' %}
+    <div class="card p-6">
+        <div class="text-center">
+            <div class="text-gray-500 text-xs uppercase tracking-widest mb-2">Tanggal Hari Ini</div>
+            <div class="text-2xl font-bold text-white mb-6">{{ current_date }}</div>
+
+            {% if is_clocked_in %}
+            <!-- Already Clocked In -->
+            <div class="mb-4">
+                <div class="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/20 border border-amber-500/30 rounded-full text-amber-400 text-sm">
+                    <div class="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></div>
+                    Kamu sudah Clock In
+                </div>
+            </div>
+            <div class="flex items-center justify-center gap-4">
+                <div class="text-center">
+                    <div class="text-xs text-gray-500 mb-1">Jam Masuk</div>
+                    <div class="text-lg font-mono text-white">{{ today_record.clock_in.split(' ')[1] if today_record and today_record.clock_in else '-' }}</div>
+                </div>
+                {% if today_record and today_record.clock_out %}
+                <div class="text-center">
+                    <div class="text-xs text-gray-500 mb-1">Jam Pulang</div>
+                    <div class="text-lg font-mono text-emerald-400">{{ today_record.clock_out.split(' ')[1] }}</div>
+                </div>
+                {% endif %}
+            </div>
+            {% if not today_record or not today_record.clock_out %}
+            <form method="POST" action="/absensi/clock-out" class="mt-6">
+                <button type="submit" class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-12 rounded-2xl text-lg transition shadow-lg shadow-red-500/30">
+                    <i class="fas fa-sign-out-alt mr-2"></i>Clock Out
+                </button>
+            </form>
+            {% endif %}
+            {% else %}
+            <!-- Not Clocked In -->
+            <div class="mb-6">
+                <div class="inline-flex items-center gap-2 px-4 py-2 bg-gray-500/20 border border-gray-500/30 rounded-full text-gray-400 text-sm">
+                    <div class="w-2 h-2 bg-gray-400 rounded-full"></div>
+                    Belum Clock In hari ini
+                </div>
+            </div>
+            <form method="POST" action="/absensi/clock-in">
+                <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-12 rounded-2xl text-lg transition shadow-lg shadow-blue-500/30">
+                    <i class="fas fa-sign-in-alt mr-2"></i>Clock In
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Attendance Table -->
+    <div class="card overflow-hidden">
+        <div class="p-4 border-b border-gray-700 flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+                <i class="fas fa-list mr-2"></i>Riwayat Kehadiran
+            </h3>
+            <span class="text-xs text-gray-600">{{ attendance_records|length }} records</span>
+        </div>
+
+        {% if attendance_records %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-900/50 text-gray-500 text-xs uppercase tracking-wider">
+                        <th class="text-left px-4 py-3 font-medium">Tanggal</th>
+                        {% if user.role == 'mentor' %}
+                        <th class="text-left px-4 py-3 font-medium">Nama</th>
+                        {% endif %}
+                        <th class="text-left px-4 py-3 font-medium">Jam Masuk</th>
+                        <th class="text-left px-4 py-3 font-medium">Jam Pulang</th>
+                        <th class="text-left px-4 py-3 font-medium">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-800">
+                    {% for att in attendance_records %}
+                    <tr class="hover:bg-gray-900/30 transition">
+                        <td class="px-4 py-3 text-white">{{ att.date }}</td>
+                        {% if user.role == 'mentor' %}
+                        <td class="px-4 py-3">
+                            <div class="flex items-center gap-2">
+                                <div class="w-6 h-6 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400 text-[10px] font-bold">
+                                    {{ att.nama[:1] }}
+                                </div>
+                                <span class="text-white">{{ att.nama }}</span>
+                            </div>
+                        </td>
+                        {% endif %}
+                        <td class="px-4 py-3 text-gray-400 font-mono text-xs">
+                            {{ att.clock_in.split(' ')[1] if att.clock_in else '-' }}
+                        </td>
+                        <td class="px-4 py-3 font-mono text-xs">
+                            {% if att.clock_out %}
+                            <span class="text-emerald-400">{{ att.clock_out.split(' ')[1] }}</span>
+                            {% else %}
+                            <span class="text-amber-400">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if att.clock_out %}
+                            <span class="text-[10px] px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full border border-emerald-500/30">Lengkap</span>
+                            {% else %}
+                            <span class="text-[10px] px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded-full border border-amber-500/30">Belum Pulang</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-12 text-gray-600">
+            <i class="fas fa-calendar-xmark text-4xl mb-3 text-gray-700"></i>
+            <p class="text-sm">Belum ada data kehadiran</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block title %}Admin Room — Staff Management{% endblock %}
+{% block extra_head %}
+<style>
+  body { background: var(--bg-base); }
+  .ar-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 12px; }
+  .user-row:hover { background: rgba(255,255,255,0.03); }
+  .badge-soft { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen py-8 px-4">
+  <div class="max-w-3xl mx-auto space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <div class="text-xs uppercase tracking-widest text-gray-500 mb-1">Staff Management</div>
+        <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+          <i class="fas fa-shield-halved text-amber-400"></i> Admin Room
+        </h1>
+        <p class="text-sm text-gray-500 mt-1">Kelola akun & master password. Password asli tidak bisa ditampilkan (bcrypt).</p>
+      </div>
+      <div class="flex gap-2">
+        <button type="button" onclick="lockAdmin()" class="px-3 py-2 rounded-xl text-sm bg-gray-800 border border-gray-700 text-gray-300 hover:text-white">
+          <i class="fas fa-lock mr-1"></i>Lock
+        </button>
+        <a href="/login" class="px-3 py-2 rounded-xl text-sm bg-gray-800 border border-gray-700 text-gray-300 hover:text-white">
+          <i class="fas fa-arrow-left mr-1"></i>Login
+        </a>
+      </div>
+    </div>
+
+    <!-- Card 1: User list -->
+    <section class="ar-card p-5">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-white font-semibold"><i class="fas fa-users mr-2 text-blue-400"></i>List Username</h2>
+          <p class="text-xs text-gray-500 mt-0.5">Klik baris → reset password (ke <code class="text-gray-400">123</code>) atau hapus (cascade).</p>
+        </div>
+        <button type="button" onclick="loadUsers()" class="text-xs px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-300 hover:text-white">
+          <i class="fas fa-rotate mr-1"></i>Refresh
+        </button>
+      </div>
+      <div id="users-status" class="text-xs text-gray-500 mb-3">Memuat…</div>
+      <div id="users-list" class="divide-y divide-gray-800 border border-gray-800 rounded-xl overflow-hidden"></div>
+    </section>
+
+    <!-- Card 2: Change master pass -->
+    <section class="ar-card p-5">
+      <h2 class="text-white font-semibold mb-1"><i class="fas fa-key mr-2 text-amber-400"></i>Ganti Master Password</h2>
+      <p class="text-xs text-gray-500 mb-4">Dipakai untuk Admin Room + Buat Akun Baru di login.</p>
+      <div class="grid gap-3 sm:grid-cols-1 max-w-md">
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5">Master password saat ini</label>
+          <input type="password" id="mp-current" class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm" placeholder="••••••••">
+        </div>
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5">Master password baru</label>
+          <input type="password" id="mp-new" class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm" placeholder="min. 6 karakter">
+        </div>
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5">Konfirmasi</label>
+          <input type="password" id="mp-confirm" class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm" placeholder="ulang password baru">
+        </div>
+        <div id="mp-status" class="text-xs"></div>
+        <button type="button" onclick="changeMaster()" class="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-semibold text-sm">
+          <i class="fas fa-check mr-1"></i>Simpan Master Password
+        </button>
+      </div>
+    </section>
+
+    <p class="text-center text-[11px] text-gray-600">{{ app_version or '' }}</p>
+  </div>
+</div>
+
+<!-- Detail drawer / modal -->
+<div id="modal-user" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+  <div class="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+      <h3 class="text-white font-semibold"><i class="fas fa-user mr-2 text-blue-400"></i><span id="du-title">User</span></h3>
+      <button type="button" onclick="closeUserModal()" class="text-gray-500 hover:text-white"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div class="grid grid-cols-2 gap-3 text-sm">
+        <div>
+          <div class="text-[10px] uppercase tracking-wider text-gray-500">Username</div>
+          <div id="du-username" class="text-white font-medium"></div>
+        </div>
+        <div>
+          <div class="text-[10px] uppercase tracking-wider text-gray-500">Nama</div>
+          <div id="du-nama" class="text-white font-medium"></div>
+        </div>
+      </div>
+      <div class="bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-gray-400">
+        Password disimpan sebagai hash. Reset akan set ulang ke <span class="text-emerald-400 font-mono">123</span>.
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" onclick="resetPw('pkl')" class="flex-1 min-w-[120px] px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-sm hover:bg-emerald-500/25">
+          Reset pass Karyawan → 123
+        </button>
+        <button type="button" onclick="resetPw('mentor')" class="flex-1 min-w-[120px] px-3 py-2 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 text-sm hover:bg-blue-500/25">
+          Reset pass Atasan → 123
+        </button>
+        <button type="button" onclick="resetPw('both')" class="w-full px-3 py-2 rounded-xl bg-gray-800 border border-gray-700 text-gray-200 text-sm hover:bg-gray-700">
+          Reset keduanya → 123
+        </button>
+      </div>
+      <div id="du-status" class="text-xs"></div>
+      <button type="button" onclick="deleteUser()" class="w-full px-3 py-2.5 rounded-xl bg-red-500/15 border border-red-500/40 text-red-400 text-sm font-semibold hover:bg-red-500/25">
+        <i class="fas fa-trash mr-1"></i>Hapus username (cascade)
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let selected = null;
+
+  async function loadUsers() {
+    const list = document.getElementById('users-list');
+    const st = document.getElementById('users-status');
+    st.textContent = 'Memuat…';
+    list.innerHTML = '';
+    try {
+      const r = await fetch('/api/admin-room/users', { credentials: 'include', cache: 'no-store' });
+      const d = await r.json();
+      if (!r.ok || !d.success) {
+        st.innerHTML = '<span class="text-red-400">' + (d.error || 'Gagal load users') + '</span>';
+        if (r.status === 401) location.href = '/login?admin=1';
+        return;
+      }
+      const users = d.users || [];
+      st.textContent = users.length + ' username';
+      if (!users.length) {
+        list.innerHTML = '<div class="p-4 text-sm text-gray-500">Belum ada user.</div>';
+        return;
+      }
+      users.forEach(function (u) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'user-row w-full text-left px-4 py-3 flex items-center justify-between gap-3';
+        row.innerHTML =
+          '<div><div class="text-white text-sm font-medium">@' + esc(u.username) + '</div>' +
+          '<div class="text-xs text-gray-500">' + esc(u.nama || '') + '</div></div>' +
+          '<div class="flex items-center gap-2"><span class="badge-soft px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">score ' + (u.score != null ? u.score : 100) + '</span>' +
+          '<i class="fas fa-chevron-right text-gray-600 text-xs"></i></div>';
+        row.onclick = function () { openUser(u); };
+        list.appendChild(row);
+      });
+    } catch (e) {
+      st.innerHTML = '<span class="text-red-400">Error: ' + esc(e.message) + '</span>';
+    }
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function openUser(u) {
+    selected = u;
+    document.getElementById('du-title').textContent = '@' + u.username;
+    document.getElementById('du-username').textContent = u.username;
+    document.getElementById('du-nama').textContent = u.nama || '—';
+    document.getElementById('du-status').innerHTML = '';
+    document.getElementById('modal-user').classList.remove('hidden');
+  }
+
+  function closeUserModal() {
+    document.getElementById('modal-user').classList.add('hidden');
+    selected = null;
+  }
+
+  async function resetPw(mode) {
+    if (!selected) return;
+    const st = document.getElementById('du-status');
+    st.innerHTML = '<span class="text-gray-400">Reset…</span>';
+    try {
+      const r = await fetch('/api/admin-room/reset-password', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: selected.username, mode: mode })
+      });
+      const d = await r.json();
+      if (!r.ok || !d.success) {
+        st.innerHTML = '<span class="text-red-400">' + esc(d.error || 'Gagal') + '</span>';
+        return;
+      }
+      st.innerHTML = '<span class="text-emerald-400">✅ Password ' + esc(mode) + ' di-reset ke <b>123</b></span>';
+    } catch (e) {
+      st.innerHTML = '<span class="text-red-400">' + esc(e.message) + '</span>';
+    }
+  }
+
+  async function deleteUser() {
+    if (!selected) return;
+    if (!confirm('Hapus @' + selected.username + '?\n\nCascade: sessions, absensi, tasks, reports + file R2.\nTidak bisa di-undo.')) return;
+    const st = document.getElementById('du-status');
+    st.innerHTML = '<span class="text-gray-400">Menghapus…</span>';
+    try {
+      const r = await fetch('/api/admin-room/delete-user', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: selected.username })
+      });
+      const d = await r.json();
+      if (!r.ok || !d.success) {
+        st.innerHTML = '<span class="text-red-400">' + esc(d.error || 'Gagal hapus') + '</span>';
+        return;
+      }
+      closeUserModal();
+      loadUsers();
+    } catch (e) {
+      st.innerHTML = '<span class="text-red-400">' + esc(e.message) + '</span>';
+    }
+  }
+
+  async function changeMaster() {
+    const st = document.getElementById('mp-status');
+    const current = document.getElementById('mp-current').value;
+    const nw = document.getElementById('mp-new').value;
+    const cf = document.getElementById('mp-confirm').value;
+    st.innerHTML = '<span class="text-gray-400">Menyimpan…</span>';
+    try {
+      const r = await fetch('/api/admin-room/change-master-password', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password: current, new_password: nw, confirm_password: cf })
+      });
+      const d = await r.json();
+      if (!r.ok || !d.success) {
+        st.innerHTML = '<span class="text-red-400">' + esc(d.error || 'Gagal') + '</span>';
+        return;
+      }
+      st.innerHTML = '<span class="text-emerald-400">✅ Master password diganti</span>';
+      document.getElementById('mp-current').value = '';
+      document.getElementById('mp-new').value = '';
+      document.getElementById('mp-confirm').value = '';
+    } catch (e) {
+      st.innerHTML = '<span class="text-red-400">' + esc(e.message) + '</span>';
+    }
+  }
+
+  async function lockAdmin() {
+    try {
+      await fetch('/api/admin-room/lock', { method: 'POST', credentials: 'include' });
+    } catch (e) {}
+    location.href = '/login';
+  }
+
+  loadUsers();
+</script>
+{% endblock %}

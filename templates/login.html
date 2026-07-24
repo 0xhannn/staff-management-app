@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+{% block title %}Login — Staff Management{% endblock %}
+{% block extra_head %}
+<style>
+    body { display: flex; align-items: center; justify-center; }
+    .login-card { animation: fadeUp 0.4s ease; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .role-toggle-btn { transition: all 0.2s; }
+    .role-toggle-btn:hover { transform: translateY(-1px); }
+    .role-toggle-btn:active { transform: translateY(0); }
+    .role-content { transition: all 0.3s ease; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center py-12">
+    <div class="login-card w-full max-w-sm">
+
+        <!-- Logo -->
+        <div class="text-center mb-8">
+            <div class="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/30">
+                <i class="fas fa-briefcase text-white text-2xl"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-white">Staff Management</h1>
+            <p class="text-gray-500 text-sm mt-1">Staff Management</p>
+        </div>
+
+        <!-- Login Card -->
+        <div class="card p-6">
+            <h2 class="text-lg font-semibold text-white mb-1">Selamat Datang</h2>
+            <p class="text-gray-500 text-sm mb-6">Masuk dengan akun kamu</p>
+
+            {% if error %}
+            <div class="bg-red-500/20 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl mb-4 text-sm">
+                <i class="fas fa-circle-exclamation mr-2"></i>{{ error }}
+            </div>
+            {% endif %}
+
+            <form id="login-form" method="POST" action="/login">
+                <!-- Baris 1: Username -->
+                <div class="mb-4">
+                    <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Username</label>
+                    <input type="text" name="username" id="username" required autocomplete="username"
+                           class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                           placeholder="Masukkan username">
+                </div>
+
+                <!-- Role: Karyawan / Atasan / Owner -->
+                <div class="mb-4">
+                    <div class="flex gap-2 mb-3">
+                        <button type="button" id="btn-role-pkl" class="role-btn flex-1 bg-gray-800 hover:bg-gray-700 text-white font-medium py-2.5 rounded-xl text-sm transition border border-gray-700"
+                                onclick="toggleRole('pkl')">
+                            <i class="fas fa-user-tie mr-1"></i>Karyawan
+                        </button>
+                        <button type="button" id="btn-role-mentor" class="role-btn flex-1 bg-gray-800 hover:bg-gray-700 text-white font-medium py-2.5 rounded-xl text-sm transition border border-gray-700"
+                                onclick="toggleRole('mentor')">
+                            <i class="fas fa-user-shield mr-1"></i>Atasan
+                        </button>
+                        <button type="button" id="btn-role-owner" class="role-btn flex-1 bg-gray-800 hover:bg-gray-700 text-amber-400 font-medium py-2.5 rounded-xl text-sm transition border border-amber-500/30"
+                                onclick="toggleRole('owner')">
+                            <i class="fas fa-crown mr-1"></i>Owner
+                        </button>
+                    </div>
+
+                    <!-- Karyawan password -->
+                    <div id="pkl-password-section" class="hidden space-y-3">
+                        <div>
+                            <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Password</label>
+                            <input type="password" id="pkl-password"
+                                   class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                   placeholder="Masukkan password"
+                                   onkeydown="if(event.key==='Enter') submitLogin('PKL')">
+                        </div>
+                        <button type="button" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2.5 rounded-xl text-sm transition"
+                                onclick="submitLogin('PKL')">
+                            <i class="fas fa-sign-in-alt mr-2"></i>Masuk sebagai Karyawan
+                        </button>
+                    </div>
+
+                    <!-- Atasan password -->
+                    <div id="mentor-password-section" class="hidden space-y-3">
+                        <div>
+                            <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Password</label>
+                            <input type="password" id="mentor-password"
+                                   class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                   placeholder="Masukkan password"
+                                   onkeydown="if(event.key==='Enter') submitLogin('MENTOR')">
+                        </div>
+                        <button type="button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2.5 rounded-xl text-sm transition"
+                                onclick="submitLogin('MENTOR')">
+                            <i class="fas fa-sign-in-alt mr-2"></i>Masuk sebagai Atasan
+                        </button>
+                    </div>
+
+                    <!-- Owner password (master) -->
+                    <div id="owner-password-section" class="hidden space-y-3">
+                        <div>
+                            <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Master Password</label>
+                            <input type="password" id="owner-password"
+                                   class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                                   placeholder="Master password (sama Admin Room)"
+                                   onkeydown="if(event.key==='Enter') submitLogin('OWNER')">
+                        </div>
+                        <button type="button" class="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold py-2.5 rounded-xl text-sm transition"
+                                onclick="submitLogin('OWNER')">
+                            <i class="fas fa-sign-in-alt mr-2"></i>Masuk sebagai Owner
+                        </button>
+                        <p class="text-[11px] text-gray-500 text-center">Lihat semua staff · password = master Admin Room</p>
+                    </div>
+                </div>
+
+                <!-- Baris 4: Buat Akun + Admin Room -->
+                <div class="mt-4 space-y-2">
+                    <button type="button" class="w-full bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white font-medium py-2.5 rounded-xl text-sm transition border border-gray-700"
+                            onclick="openRegisterModal()">
+                        <i class="fas fa-user-plus mr-2"></i>Buat Akun Baru
+                    </button>
+                    <button type="button" class="w-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-medium py-2.5 rounded-xl text-sm transition border border-amber-500/30"
+                            onclick="openAdminRoomModal()">
+                        <i class="fas fa-shield-halved mr-2"></i>Admin Room
+                    </button>
+                </div>
+
+                <!-- Hidden inputs for form submission -->
+                <input type="hidden" name="password" id="hidden-password">
+                <input type="hidden" name="role_type" id="hidden-role">
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Buat Akun Baru -->
+<div id="modal-register" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+            <h2 class="text-white font-semibold"><i class="fas fa-user-plus mr-2 text-blue-400"></i>Buat Akun Baru</h2>
+            <button onclick="closeRegisterModal()" class="text-gray-500 hover:text-white transition">
+                <i class="fas fa-times text-lg"></i>
+            </button>
+        </div>
+        <div class="p-6 space-y-4">
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Username Baru</label>
+                <input type="text" id="reg-username"
+                       class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                       placeholder="Masukkan username baru">
+            </div>
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Master Password</label>
+                <input type="password" id="reg-master-password"
+                       class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                       placeholder="Masukkan master password"
+                       onkeydown="if(event.key==='Enter') submitRegister()">
+            </div>
+            <div id="reg-status" class="text-xs"></div>
+            <div class="flex gap-3 pt-2">
+                <button type="button" onclick="closeRegisterModal()"
+                        class="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-2.5 rounded-xl text-sm font-medium transition">
+                    Batal
+                </button>
+                <button type="button" id="btn-submit-register" onclick="submitRegister()"
+                        class="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-xl text-sm font-medium transition">
+                    <i class="fas fa-check mr-1"></i>Oke
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentRole = null;
+
+    function toggleRole(role) {
+        currentRole = role;
+        ['pkl-password-section', 'mentor-password-section', 'owner-password-section'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.classList.add('hidden');
+        });
+        document.querySelectorAll('.role-btn').forEach(function (el) {
+            el.classList.remove('bg-blue-600', 'bg-emerald-600', 'bg-amber-600', 'border-blue-500', 'border-emerald-500', 'border-amber-500', 'text-white', 'text-black');
+            el.classList.add('bg-gray-800', 'border-gray-700');
+        });
+        if (role === 'pkl') {
+            document.getElementById('pkl-password-section').classList.remove('hidden');
+            var b = document.getElementById('btn-role-pkl');
+            b.classList.add('bg-emerald-600', 'border-emerald-500', 'text-white');
+            b.classList.remove('bg-gray-800', 'border-gray-700');
+        } else if (role === 'mentor') {
+            document.getElementById('mentor-password-section').classList.remove('hidden');
+            var b = document.getElementById('btn-role-mentor');
+            b.classList.add('bg-blue-600', 'border-blue-500', 'text-white');
+            b.classList.remove('bg-gray-800', 'border-gray-700');
+        } else if (role === 'owner') {
+            document.getElementById('owner-password-section').classList.remove('hidden');
+            var b = document.getElementById('btn-role-owner');
+            b.classList.add('bg-amber-600', 'border-amber-500', 'text-black');
+            b.classList.remove('bg-gray-800', 'border-gray-700');
+        }
+    }
+
+    function showErrorModal(message) {
+        const modal = document.getElementById('modal-error');
+        const msgEl = document.getElementById('error-msg');
+        msgEl.innerHTML = '<span class="text-red-400">❌ ' + message + '</span>';
+        modal.classList.remove('hidden');
+    }
+
+    function closeErrorModal() {
+        document.getElementById('modal-error').classList.add('hidden');
+    }
+
+    async function submitLogin(role) {
+        let username = document.getElementById('username').value.trim();
+        let password = '';
+        if (role === 'OWNER') {
+            password = document.getElementById('owner-password').value;
+            if (!password) {
+                showErrorModal('Master password harus diisi!');
+                return;
+            }
+            username = 'owner';
+        } else if (role === 'PKL') {
+            password = document.getElementById('pkl-password').value;
+        } else if (role === 'MENTOR') {
+            password = document.getElementById('mentor-password').value;
+        }
+        if (role !== 'OWNER' && (!username || !password)) {
+            showErrorModal('Username dan password harus diisi!');
+            return;
+        }
+        try {
+            const resp = await fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                credentials: 'include',
+                body: new URLSearchParams({ username, password, role_type: role })
+            });
+            const data = await resp.json();
+            if (data.success === false) {
+                showErrorModal(data.detail || 'Login gagal');
+            } else {
+                window.location.href = data.redirect || '/dashboard';
+            }
+        } catch (e) {
+            showErrorModal('Error: ' + e.message);
+        }
+    }
+
+    function openRegisterModal() {
+        document.getElementById('reg-username').value = '';
+        document.getElementById('reg-master-password').value = '';
+        document.getElementById('reg-status').innerHTML = '';
+        document.getElementById('modal-register').classList.remove('hidden');
+        document.getElementById('reg-username').focus();
+    }
+
+    function closeRegisterModal() {
+        document.getElementById('modal-register').classList.add('hidden');
+    }
+
+    async function submitRegister() {
+        const username    = document.getElementById('reg-username').value.trim();
+        const masterPass  = document.getElementById('reg-master-password').value;
+        const statusEl    = document.getElementById('reg-status');
+        const btn         = document.getElementById('btn-submit-register');
+        if (!username) {
+            statusEl.innerHTML = '<span class="text-red-400">⚠️ Username tidak boleh kosong</span>';
+            return;
+        }
+        if (!masterPass) {
+            statusEl.innerHTML = '<span class="text-red-400">⚠️ Master password tidak boleh kosong</span>';
+            return;
+        }
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Memproses...';
+        statusEl.innerHTML = '<span class="text-gray-400">Membuat akun...</span>';
+        try {
+            const res = await fetch('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password: masterPass, master_password: masterPass })
+            });
+            const data = await res.json();
+            if (data.success) {
+                statusEl.innerHTML = '<span class="text-emerald-400">✅ Akun "' + username + '" berhasil dibuat!</span>';
+                setTimeout(() => { closeRegisterModal(); document.getElementById('username').value = username; }, 1500);
+            } else {
+                statusEl.innerHTML = '<span class="text-red-400">❌ ' + (data.error || 'Gagal membuat akun') + '</span>';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-check mr-1"></i>Oke';
+            }
+        } catch (e) {
+            statusEl.innerHTML = '<span class="text-red-400">❌ Error: ' + e.message + '</span>';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-check mr-1"></i>Oke';
+        }
+    }
+
+    
+    function openAdminRoomModal() {
+        document.getElementById('admin-master-password').value = '';
+        document.getElementById('admin-room-status').innerHTML = '';
+        document.getElementById('modal-admin-room').classList.remove('hidden');
+        document.getElementById('admin-master-password').focus();
+    }
+
+    function closeAdminRoomModal() {
+        document.getElementById('modal-admin-room').classList.add('hidden');
+    }
+
+    async function submitAdminRoom() {
+        const masterPass = document.getElementById('admin-master-password').value;
+        const statusEl = document.getElementById('admin-room-status');
+        const btn = document.getElementById('btn-submit-admin-room');
+        if (!masterPass) {
+            statusEl.innerHTML = '<span class="text-red-400">⚠️ Master password tidak boleh kosong</span>';
+            return;
+        }
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Cek...';
+        try {
+            const res = await fetch('/api/admin-room/unlock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ master_password: masterPass })
+            });
+            const data = await res.json();
+            if (data.success) {
+                statusEl.innerHTML = '<span class="text-emerald-400">✅ OK — masuk Admin Room…</span>';
+                window.location.href = data.redirect || '/admin-room';
+            } else {
+                statusEl.innerHTML = '<span class="text-red-400">❌ ' + (data.error || 'Gagal') + '</span>';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-unlock mr-1"></i>Masuk';
+            }
+        } catch (e) {
+            statusEl.innerHTML = '<span class="text-red-400">❌ Error: ' + e.message + '</span>';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-unlock mr-1"></i>Masuk';
+        }
+    }
+
+    try {
+        if (new URLSearchParams(location.search).get('admin') === '1') {
+            openAdminRoomModal();
+        }
+    } catch (e) {}
+
+    // Error modal HTML will be injected below
+</script>
+
+<!-- Modal: Admin Room unlock -->
+<div id="modal-admin-room" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+            <h2 class="text-white font-semibold"><i class="fas fa-shield-halved mr-2 text-amber-400"></i>Admin Room</h2>
+            <button onclick="closeAdminRoomModal()" class="text-gray-500 hover:text-white transition">
+                <i class="fas fa-times text-lg"></i>
+            </button>
+        </div>
+        <div class="p-6 space-y-4">
+            <p class="text-xs text-gray-500">Masukkan master password untuk kelola username & master pass.</p>
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Master Password</label>
+                <input type="password" id="admin-master-password"
+                       class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-amber-500"
+                       placeholder="Master password"
+                       onkeydown="if(event.key==='Enter') submitAdminRoom()">
+            </div>
+            <div id="admin-room-status" class="text-xs"></div>
+            <div class="flex gap-3 pt-1">
+                <button type="button" onclick="closeAdminRoomModal()"
+                        class="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-2.5 rounded-xl text-sm font-medium transition">Batal</button>
+                <button type="button" id="btn-submit-admin-room" onclick="submitAdminRoom()"
+                        class="flex-1 bg-amber-500 hover:bg-amber-600 text-black py-2.5 rounded-xl text-sm font-semibold transition">
+                    <i class="fas fa-unlock mr-1"></i>Masuk
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Error modal -->
+<div id="modal-error" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-white font-semibold"><i class="fas fa-exclamation-triangle mr-2 text-red-400"></i>Login Gagal</h2>
+            <button onclick="closeErrorModal()" class="text-gray-500 hover:text-white transition"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="error-msg" class="text-center text-gray-300"></div>
+        <div class="flex justify-center mt-4">
+            <button type="button" onclick="closeErrorModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded">Tutup</button>
+        </div>
+    </div>
+</div>
+{% endblock %}

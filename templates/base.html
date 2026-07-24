@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="id" data-role="{{ login_role or 'pkl' }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Staff Management{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { 'inter': ['Inter', 'sans-serif'] },
+                    colors: {
+                        base: '#0f172a',
+                        card: '#1f2937',
+                        border: '#374151',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* ===== Design System — Student Offers inspired ===== */
+        :root {
+            --bg-base: #0B0E14;
+            --bg-card: #1A1F2B;
+            --bg-card-soft: rgba(30, 40, 60, 0.4);
+            --border-subtle: rgba(139, 146, 163, 0.18);
+            --border-hover: rgba(0, 120, 255, 0.4);
+            --accent: #0078FF;
+            --accent-rgb: 0, 120, 255;
+            --accent-soft: rgba(0, 120, 255, 0.1);
+            --accent-deep: #0058c5;
+            --text-primary: #FFFFFF;
+            --text-secondary: #8B92A3;
+            --text-tertiary: #6B7280;
+            --radius-card: 12px;
+            --radius-btn: 8px;
+        }
+        /* Karyawan mode — emerald accent */
+        html[data-role="owner"] {
+            --accent: #F59E0B;
+            --accent-rgb: 245, 158, 11;
+            --accent-soft: rgba(245, 158, 11, 0.1);
+            --border-hover: rgba(245, 158, 11, 0.4);
+            --accent-deep: #d97706;
+        }
+        html[data-role="pkl"] {
+            --accent: #00C896;
+            --accent-rgb: 0, 200, 150;
+            --accent-soft: rgba(0, 200, 150, 0.1);
+            --border-hover: rgba(0, 200, 150, 0.4);
+            --accent-deep: #00a07a;
+        }
+        body { background-color: var(--bg-base); font-family: 'Inter', sans-serif; color: var(--text-primary); -webkit-font-smoothing: antialiased; }
+        a, button, input, select, textarea { transition: all 0.2s; }
+        .card { background-color: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-card); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .tab-active { background-color: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-base); }
+        ::-webkit-scrollbar-thumb { background: #2a3140; border-radius: 3px; }
+        @keyframes slide-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-slide-in { animation: slide-in 0.3s ease forwards; }
+    </style>
+    {% block extra_head %}{% endblock %}
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+</head>
+<body class="min-h-screen" data-login-role="{{ login_role or 'pkl' }}" data-current-user="{{ user.username if user else '' }}">
+
+    {% if user %}
+    <!-- ============ NAVBAR ============ -->
+    <nav class="bg-gray-900/80 backdrop-blur-md border-b border-gray-800 sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto px-4">
+            <div class="flex items-center justify-between h-14">
+                <!-- Logo -->
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-briefcase text-white text-sm"></i>
+                    </div>
+                    <span class="font-bold text-white tracking-tight">Staff Management</span>
+                    {% if request.state.login_role is defined and request.state.login_role == 'mentor' %}
+                    <span class="text-[10px] px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full border border-blue-500/30 uppercase tracking-wider font-bold">ATASAN</span>
+                    {% elif request.state.login_role is defined and request.state.login_role == 'pkl' %}
+                    <span class="text-[10px] px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full border border-emerald-500/30 uppercase tracking-wider font-bold">Karyawan</span>
+                    {% elif request.state.login_role is defined and request.state.login_role == 'owner' %}
+                    <span class="text-[10px] px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded-full border border-amber-500/30 uppercase tracking-wider font-bold">OWNER</span>
+                    {% endif %}
+                </div>
+
+                <!-- Nav Tabs -->
+                <div class="flex items-center gap-1" id="nav-tabs">
+                    <a href="/dashboard" data-tab="home" class="nav-tab flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800">
+                        <i class="fas fa-home text-xs"></i>
+                        <span class="hidden sm:inline">Home</span>
+                    </a>
+                    <a href="#absensi" data-tab="absensi" class="nav-tab flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800">
+                        <i class="fas fa-calendar-check text-xs"></i>
+                        <span class="hidden sm:inline">Absensi</span>
+                    </a>
+                    <a href="#tugas" data-tab="tugas" class="nav-tab flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800">
+                        <i class="fas fa-clipboard-list text-xs"></i>
+                        <span class="hidden sm:inline">Tugas</span>
+                    </a>
+                </div>
+
+                <!-- User Menu -->
+                <div class="flex items-center gap-3">
+                    <div class="text-right hidden sm:block">
+                        <div class="text-sm font-medium text-white">{{ user.nama }}</div>
+                        <div class="text-[10px] text-gray-500">@{{ user.username }}</div>
+                    </div>
+                    <a href="/logout" class="w-8 h-8 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-400 hover:text-white hover:border-gray-500 transition" title="Logout">
+                        <i class="fas fa-right-from-bracket text-xs"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+    {% endif %}
+
+    <!-- ============ MAIN CONTENT ============ -->
+    <main class="max-w-5xl mx-auto px-4 py-6">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- ============ FLASH MESSAGES ============ -->
+    {% if error %}
+    <div class="fixed bottom-4 right-4 bg-red-500/90 text-white px-4 py-3 rounded-xl shadow-lg text-sm" id="flash-error">
+        <i class="fas fa-circle-exclamation mr-2"></i>{{ error }}
+    </div>
+    <script>setTimeout(() => { const el = document.getElementById('flash-error'); if(el) el.remove(); }, 4000);</script>
+    {% endif %}
+
+    {% if success %}
+    <div class="fixed bottom-4 right-4 bg-emerald-500/90 text-white px-4 py-3 rounded-xl shadow-lg text-sm" id="flash-success">
+        <i class="fas fa-check-circle mr-2"></i>{{ success }}
+    </div>
+    <script>setTimeout(() => { const el = document.getElementById('flash-success'); if(el) el.remove(); }, 4000);</script>
+    {% endif %}
+
+    <!-- Update System: remote latest + Update now -->
+    <script src="/static/update-banner.js"></script>
+</body>
+</html>

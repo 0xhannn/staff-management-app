@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Tugas — Staff Management{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header -->
+    <div>
+        <h1 class="text-xl font-bold text-white">
+            <i class="fas fa-clipboard-list mr-2 text-emerald-400"></i>Tugas & Laporan
+        </h1>
+        <p class="text-gray-500 text-sm mt-0.5">
+            {% if user.role == 'mentor' %}Kelola & lihat semua tugas dan laporan{% else %}Lihat tugas & submit laporan harian{% endif %}
+        </p>
+    </div>
+
+    <!-- Mentor: Assign Task Form -->
+    {% if user.role == 'mentor' %}
+    <div class="card p-5">
+        <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
+            <i class="fas fa-plus-circle mr-2 text-blue-400"></i>Assign Tugas Baru
+        </h3>
+        <form method="POST" action="/tugas/assign" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-xs text-gray-500 mb-1.5">Judul Tugas</label>
+                <input type="text" name="title" required placeholder="Contoh: Desain Banner Promo"
+                       class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 mb-1.5">Tugaskan Kepada</label>
+                <select name="assigned_to" required class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500">
+                    <option value="" class="text-gray-600">-- Pilih PKL --</option>
+                    {% for p in all_pkl %}
+                    <option value="{{ p.id }}">{{ p.nama }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="sm:col-span-2">
+                <label class="block text-xs text-gray-500 mb-1.5">Deskripsi</label>
+                <textarea name="description" rows="2" placeholder="Deskripsi tugas..."
+                          class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 resize-none"></textarea>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-500 mb-1.5">Deadline</label>
+                <input type="date" name="deadline"
+                       class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500">
+            </div>
+            <div class="flex items-end">
+                <button type="submit" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2.5 rounded-xl text-sm transition">
+                    <i class="fas fa-paper-plane mr-2"></i>Assign Tugas
+                </button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- Task List -->
+        <div class="card overflow-hidden">
+            <div class="p-4 border-b border-gray-700">
+                <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+                    <i class="fas fa-tasks mr-2"></i>Daftar Tugas
+                </h3>
+            </div>
+            <div class="p-4 space-y-3 max-h-[400px] overflow-y-auto">
+                {% for task in tasks %}
+                <div class="p-3 rounded-xl bg-gray-900/50 border border-gray-800 hover:border-gray-700 transition">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm font-medium text-white truncate">{{ task.title }}</div>
+                            {% if task.description %}
+                            <div class="text-xs text-gray-500 mt-0.5 line-clamp-2">{{ task.description }}</div>
+                            {% endif %}
+                            <div class="flex items-center gap-2 mt-2">
+                                <span class="text-[10px] text-gray-600">
+                                    {% if task.assigned_name %}→ {{ task.assigned_name }} · {% endif %}
+                                    {% if task.deadline %}Deadline: {{ task.deadline }}{% endif %}
+                                </span>
+                            </div>
+                        </div>
+                        <div>
+                            {% if task.status == 'submitted' %}
+                            <span class="text-[10px] px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full border border-emerald-500/30">Submitted</span>
+                            {% elif task.status == 'graded' %}
+                            <span class="text-[10px] px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full border border-blue-500/30">Graded</span>
+                            {% else %}
+                            <span class="text-[10px] px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded-full border border-amber-500/30">Pending</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <!-- Submit Report Form (PKL only) -->
+                    {% if user.role == 'pkl' and task.status == 'pending' %}
+                    <form method="POST" action="/tugas/submit" class="mt-3 pt-3 border-t border-gray-800">
+                        <input type="hidden" name="task_id" value="{{ task.id }}">
+                        <textarea name="content" rows="2" required placeholder="Tulis laporan完成 tugas ini..."
+                                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-blue-500 resize-none mb-2"></textarea>
+                        <button type="submit" class="bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-1.5 px-4 rounded-lg text-xs transition">
+                            <i class="fas fa-upload mr-1"></i>Submit Laporan
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                {% if not tasks %}
+                <div class="text-center py-8 text-gray-600">
+                    <i class="fas fa-clipboard text-3xl mb-2 text-gray-700"></i>
+                    <p class="text-sm">Belum ada tugas</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Reports List -->
+        <div class="card overflow-hidden">
+            <div class="p-4 border-b border-gray-700">
+                <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+                    <i class="fas fa-file-alt mr-2"></i>Laporan Terbaru
+                </h3>
+            </div>
+            <div class="p-4 space-y-3 max-h-[400px] overflow-y-auto">
+                {% for report in reports %}
+                <div class="p-3 rounded-xl bg-gray-900/50 border border-gray-800">
+                    <div class="flex items-start justify-between gap-2 mb-2">
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm font-medium text-white truncate">
+                                {% if report.task_title %}{{ report.task_title }}{% else %}Laporan Harian{% endif %}
+                            </div>
+                            {% if user.role == 'mentor' %}
+                            <div class="text-xs text-emerald-400">{{ report.user_name }}</div>
+                            {% endif %}
+                        </div>
+                        <span class="text-[10px] text-gray-600 whitespace-nowrap">{{ report.submitted_at.split(' ')[0] }}</span>
+                    </div>
+                    <div class="text-xs text-gray-400 bg-gray-900/50 rounded-lg p-2 line-clamp-3">{{ report.content }}</div>
+                </div>
+                {% endfor %}
+                {% if not reports %}
+                <div class="text-center py-8 text-gray-600">
+                    <i class="fas fa-file-circle-xmark text-3xl mb-2 text-gray-700"></i>
+                    <p class="text-sm">Belum ada laporan</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

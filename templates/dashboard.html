@@ -1,0 +1,2453 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Staff Management{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* ===== Student Offers–inspired restyle: Home tab only ===== */
+    .stat-card { transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease; }
+    .stat-card:hover { transform: translateY(-3px); border-color: rgba(var(--accent-rgb), 0.5); box-shadow: 0 10px 30px -10px rgba(var(--accent-rgb), 0.4); }
+    .log-entry { animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+    .form-input:focus { box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.5); }
+    .role-badge { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+    /* Section labels — uppercase, gray-400, 0.15em letter-spacing, 14px */
+    .section-label {
+        font-size: 14px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        color: var(--text-secondary);
+    }
+    .section-label i { color: var(--accent); }
+
+    /* Main heading — big, bold, tight letter-spacing */
+    .dash-h1 { font-size: clamp(28px, 4.4vw, 52px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; color: #fff; }
+    .dash-sub { font-size: 14px; line-height: 1.6; color: var(--text-secondary); }
+
+    /* Stat cards — bigger padding, single blue accent on score */
+    .stat-card { padding: 28px 24px !important; }
+    .stat-num { font-size: clamp(32px, 3.4vw, 44px); font-weight: 600; letter-spacing: -0.01em; line-height: 1; }
+    .stat-num--accent { color: var(--accent); }
+    .stat-num--muted { color: var(--text-secondary); }
+    .stat-label { font-size: 13px; color: var(--text-tertiary); margin-top: 10px; letter-spacing: 0.02em; }
+
+    /* Action list items — bigger padding, single blue hover */
+    .action-item { padding: 18px 20px !important; }
+    .action-item:hover { border-color: var(--border-hover); background: rgba(0, 120, 255, 0.04); }
+    .action-item .ico-box { background: var(--accent-soft); }
+    .action-item .ico-box i { color: var(--accent); }
+    .action-item:hover .ico-box { background: rgba(0, 120, 255, 0.18); }
+    .action-item .ico-box { transition: background 0.2s ease; }
+    .action-title { font-size: 16px; font-weight: 600; color: #fff; }
+    .action-sub { font-size: 13px; color: var(--text-tertiary); margin-top: 2px; }
+
+    /* Log activity — bigger dots, smaller dates */
+    .log-item { padding: 14px 16px !important; }
+    .log-dot { width: 10px; height: 10px; }
+    .log-date { font-size: 13px; color: #fff; }
+    .log-time { font-size: 12px; color: var(--text-tertiary); }
+
+    /* Card padding bump — Home tab only */
+    .home-card { padding: 28px 28px !important; }
+
+    /* Tab system — hide all tab content by default */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Calendar */
+    .cal-day {
+        aspect-ratio: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        color: #9ca3af;
+        transition: all 0.15s;
+    }
+    .cal-day.empty { visibility: hidden; }
+    .cal-day.has-att { font-weight: 600; color: white; }
+    .cal-day.has-att.present { background-color: rgba(16, 185, 129, 0.3); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.5); }
+    .cal-day.has-att.complete { background-color: rgba(16, 185, 129, 0.5); color: white; border: 1px solid rgba(16, 185, 129, 0.7); }
+    .cal-day.has-att.izin { background-color: rgba(245, 158, 11, 0.3); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.5); }
+    .cal-day.has-att.alpha { background-color: rgba(239, 68, 68, 0.3); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.5); }
+    .cal-day.today { box-shadow: 0 0 0 2px #3b82f6; }
+    
+    .btn-attendance { transition: all 0.2s; }
+    .btn-attendance:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8" data-login-role="{{ login_role }}" data-score="{{ score }}" data-user-id="{{ user.id }}">
+
+    <!-- ============== HEADER ============== -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="dash-h1">
+                <span>{{ user.nama.split(',')[0] if ',' in user.nama else user.nama }}</span>
+                <span id="role-badge" class="inline-block px-3 py-1 rounded-full text-xs font-medium ml-3 align-middle {% if login_role in ['mentor', 'owner'] %}bg-[var(--accent-soft)] text-[var(--accent)]{% else %}bg-[var(--accent-soft)] text-[var(--accent)]{% endif %} role-badge" style="border: 1px solid var(--border-subtle);">
+                    {% if login_role == 'owner' %}OWNER{% elif login_role == 'mentor' %}ATASAN{% else %}KARYAWAN{% endif %}
+                </span>
+            </h1>
+            <p class="dash-sub mt-2">
+                {% if login_role in ['mentor', 'owner'] %}
+                Mode <span class="text-[var(--accent)] font-medium">Atasan</span> — mengelola data akun @{{ user.username }}
+                {% else %}
+                Mode <span class="text-[var(--accent)] font-medium">Karyawan</span> — semangat belajar, {{ user.nama }}!
+                {% endif %}
+            </p>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="text-right hidden sm:block">
+                <div class="text-sm text-[var(--text-secondary)]" style="font-weight: 500;">{{ current_date }}</div>
+            </div>
+            <div class="relative" id="profile-dropdown">
+                <button onclick="toggleProfileMenu()" class="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold transition" style="background: linear-gradient(135deg, var(--accent), var(--accent-deep)); box-shadow: 0 4px 14px rgba(var(--accent-rgb), 0.3);">
+                    {{ user.nama[:1].upper() }}
+                </button>
+                <div id="profile-menu" class="hidden absolute right-0 top-14 w-56 card shadow-2xl z-50 overflow-hidden" style="background: var(--bg-card);">
+                    <div class="px-4 py-3 border-b" style="border-color: var(--border-subtle);">
+                        <div class="font-semibold text-white text-base">{{ user.nama }}</div>
+                        <div class="text-xs text-[var(--text-tertiary)] mt-0.5">@{{ user.username }}</div>
+                        <div class="text-xs mt-1.5 font-medium text-[var(--accent)]">
+                            {{ login_role|upper }}
+                        </div>
+                    </div>
+                    <a href="#" onclick="showChangePasswordModal(); return false;" class="block px-4 py-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--accent-soft)] hover:text-white transition">
+                        <i class="fas fa-key mr-2 text-[var(--accent)]"></i>Ganti Sandi
+                    </a>
+                    <a href="/logout" class="block px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 transition">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Keluar
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============== TAB: HOME (Stat Cards + Log) ============== -->
+    <div data-tab-content="home" class="tab-content active">
+        <!-- Section label -->
+        <div class="section-label mb-4">
+            <i class="fas fa-chart-line mr-2"></i>Ringkasan
+        </div>
+
+        <!-- Stat Cards (5 total: 4 existing + Skor Kepatuhan) -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
+            <div class="card stat-card">
+                <div class="stat-num stat-num--muted" data-stat="total_attendance">{{ stats.total_attendance or 0 }}</div>
+                <div class="stat-label">Total Hari Kerja</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-num stat-num--muted" data-stat="completed_attendance">{{ stats.completed_attendance or 0 }}</div>
+                <div class="stat-label">Kehadiran Valid</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-num stat-num--muted" data-stat="total_tasks">{{ stats.total_tasks or 0 }}</div>
+                <div class="stat-label">Tugas Diberikan</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-num stat-num--muted" data-stat="submitted_reports">{{ stats.submitted_reports or 0 }}</div>
+                <div class="stat-label">Tugas Selesai di-Upload</div>
+            </div>
+            <div class="card stat-card">
+                <div class="stat-num stat-num--accent" data-stat="score" id="stat-score">{{ score or 100 }}</div>
+                <div class="stat-label">Skor Kepatuhan</div>
+            </div>
+        </div>
+
+        <!-- Aksi Cepat + Log -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="card home-card">
+                <div class="section-label mb-5">
+                    <i class="fas fa-bolt mr-2"></i>Aksi Cepat
+                </div>
+                <div class="space-y-3">
+                    <button onclick="switchTab('absensi')" class="action-item w-full flex items-center gap-4 rounded-xl card transition text-left">
+                        <div class="ico-box w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-calendar-check text-base"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="action-title">
+                                {% if login_role in ['mentor', 'owner'] %}Manajemen Absensi{% else %}Data Kehadiran{% endif %}
+                            </div>
+                            <div class="action-sub">
+                                {% if login_role in ['mentor', 'owner'] %}Catat kehadiran staff{% else %}Lihat rekap kehadiran harian{% endif %}
+                            </div>
+                        </div>
+                        <i class="fas fa-chevron-right text-[var(--text-tertiary)]"></i>
+                    </button>
+                    <button onclick="switchTab('tugas')" class="action-item w-full flex items-center gap-4 rounded-xl card transition text-left">
+                        <div class="ico-box w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-clipboard-list text-base"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="action-title">
+                                {% if login_role in ['mentor', 'owner'] %}Manajemen Tugas{% else %}Tugas Saya{% endif %}
+                            </div>
+                            <div class="action-sub">
+                                {% if login_role in ['mentor', 'owner'] %}Beri & cek tugas harian{% else %}Lihat & laporkan tugas{% endif %}
+                            </div>
+                        </div>
+                        <i class="fas fa-chevron-right text-[var(--text-tertiary)]"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="card home-card">
+                <div class="section-label mb-5">
+                    <i class="fas fa-clock-rotate-left mr-2"></i>Log Aktivitas Terakhir
+                </div>
+                <div class="space-y-2 max-h-96 overflow-y-auto pr-1">
+                    {% for att in recent_attendance[:5] %}
+                    <div class="log-item flex items-center gap-3 rounded-xl log-entry" style="background: rgba(255, 255, 255, 0.02);">
+                        <div class="log-dot rounded-full flex-shrink-0 {% if att.status == 'alpha' %}bg-red-400{% elif att.status == 'izin' %}bg-amber-400{% elif att.clock_out %}bg-emerald-400{% else %}bg-[var(--accent)]{% endif %}"></div>
+                        <div class="flex-1 min-w-0">
+                            <div class="log-date">{{ att.date }} <span class="log-time ml-1">({{ att.status or 'present' }})</span></div>
+                            <div class="log-time">
+                                {% if att.status in ['izin', 'alpha'] %}{{ att.status|upper }}
+                                {% else %}Masuk: {{ att.clock_in if att.clock_in else '-' }}
+                                {% if att.clock_out %} · Pulang: {{ att.clock_out }}{% endif %}{% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% if not recent_attendance %}
+                    <div class="text-center text-[var(--text-tertiary)] text-sm py-6">Belum ada aktivitas</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============== TAB: ABSENSI ============== -->
+    <div data-tab-content="absensi" class="tab-content">
+        {% if login_role in ['mentor', 'owner'] %}
+        <!-- MENTOR: Form Input Absensi + Lock + Izin/Alpha + Calendar -->
+        <div class="space-y-6">
+            <div class="card p-5 max-w-xl mx-auto">
+                <h2 class="text-lg font-semibold text-white mb-1">
+                    <i class="fas fa-calendar-check text-blue-400 mr-2"></i>Input Absensi
+                </h2>
+                <p class="text-sm text-gray-500 mb-4">Sahkan jam kerja untuk <span class="text-blue-400 font-medium">@{{ user.username }}</span></p>
+                
+                <input type="hidden" id="pkl-select" value="{{ user.id }}">
+                
+                <!-- Status indicator -->
+                <div id="att-status-indicator" class="mb-3 text-center">
+                    {% if today_att %}
+                        {% if today_att.status == 'izin' %}
+                        <span class="inline-block px-3 py-1 bg-amber-500/20 text-amber-400 rounded-full text-xs"><i class="fas fa-info-circle mr-1"></i>Hari ini: IZIN</span>
+                        {% elif today_att.status == 'alpha' %}
+                        <span class="inline-block px-3 py-1 bg-red-500/20 text-red-400 rounded-full text-xs"><i class="fas fa-info-circle mr-1"></i>Hari ini: ALPHA</span>
+                        {% elif today_att.clock_out %}
+                        <span class="inline-block px-3 py-1 bg-emerald-500/20 text-emerald-400 rounded-full text-xs"><i class="fas fa-check-circle mr-1"></i>Hari ini: LENGKAP (In & Out)</span>
+                        {% elif today_att.clock_in %}
+                        <span class="inline-block px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs"><i class="fas fa-clock mr-1"></i>Hari ini: SUDAH CLOCK IN</span>
+                        {% endif %}
+                    {% endif %}
+                </div>
+                
+                <!-- Main attendance buttons -->
+                <div class="grid grid-cols-2 gap-3">
+                    <button id="btn-clock-in" onclick="markAttendance('clock_in')" 
+                            class="btn-attendance bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl text-sm font-medium transition"
+                            {% if today_att and (today_att.clock_in or today_att.status in ['izin', 'alpha']) %}disabled{% endif %}>
+                        <i class="fas fa-sign-in-alt mr-1"></i>Clock In
+                    </button>
+                    <button id="btn-clock-out" onclick="confirmClockOut()" 
+                            class="btn-attendance bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-xl text-sm font-medium transition"
+                            {% if not today_att or not today_att.clock_in or today_att.clock_out %}disabled{% endif %}>
+                        <i class="fas fa-sign-out-alt mr-1"></i>Clock Out
+                    </button>
+                </div>
+                
+                <!-- Izin & Alpha buttons -->
+                <div class="grid grid-cols-2 gap-3 mt-3">
+                    <button id="btn-izin" onclick="setStatus('izin')" 
+                            class="btn-attendance bg-yellow-500 hover:bg-yellow-600 text-white py-3 rounded-xl text-sm font-medium transition"
+                            {% if today_att %}disabled{% endif %}>
+                        <i class="fas fa-hand-paper mr-1"></i>Izin
+                    </button>
+                    <button id="btn-alpha" onclick="setStatus('alpha')" 
+                            class="btn-attendance bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl text-sm font-medium transition"
+                            {% if today_att %}disabled{% endif %}>
+                        <i class="fas fa-times-circle mr-1"></i>Alpha
+                    </button>
+                </div>
+                <div id="att-status" class="text-xs mt-3 text-center text-gray-500"></div>
+            </div>
+            
+            <!-- Calendar Widget (mentor view) -->
+            <div class="card p-5">
+                <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
+                    <i class="fas fa-calendar mr-2 text-amber-400"></i>Kalender Presensi
+                </h3>
+                <div id="calendar-widget" data-attendance='{{ all_attendance_for_calendar|tojson }}'>
+                    <div class="flex items-center justify-between mb-4">
+                        <button onclick="changeMonth(-1)" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <div class="text-sm font-medium text-white" id="calendar-month">—</div>
+                        <button onclick="changeMonth(1)" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-7 gap-1 text-center text-xs text-gray-500 mb-1">
+                        <div>Min</div><div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div>
+                    </div>
+                    <div class="grid grid-cols-7 gap-1" id="calendar-grid"></div>
+                    <div class="flex items-center justify-center gap-3 mt-4 text-xs text-gray-500">
+                        <div class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-500/50"></span>Hadir</div>
+                        <div class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-500/30"></span>Izin</div>
+                        <div class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-500/30"></span>Alpha</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- MENTOR: All Students Attendance Table -->
+            <div class="card p-5">
+                <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
+                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+                        <i class="fas fa-users mr-2 text-emerald-400"></i>Kehadiran Staff (@{{ user.username }})
+                    </h3>
+                    <button type="button" onclick="openCorrectAttendanceModal()"
+                            class="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition">
+                        <i class="fas fa-plus mr-1"></i>Tambah / Koreksi
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-xs text-gray-500 border-b border-gray-800">
+                                <th class="py-3 px-2 font-medium">Staff</th>
+                                <th class="py-3 px-2 font-medium">Tanggal</th>
+                                <th class="py-3 px-2 font-medium">Clock In</th>
+                                <th class="py-3 px-2 font-medium">Clock Out</th>
+                                <th class="py-3 px-2 font-medium">Bukti</th>
+                                <th class="py-3 px-2 font-medium">Status</th>
+                                <th class="py-3 px-2 font-medium">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for att in all_attendance %}
+                            <tr class="border-b border-gray-800/50 hover:bg-gray-900/30">
+                                <td class="py-3 px-2 text-white">{{ att.username }}</td>
+                                <td class="py-3 px-2 text-gray-400">{{ att.date }}</td>
+                                <td class="py-3 px-2 text-gray-400">{{ att.clock_in or '-' }}</td>
+                                <td class="py-3 px-2 text-gray-400">
+                                    {{ att.clock_out or '-' }}
+                                    {% if att.clock_in and not att.clock_out and att.status == 'present' %}
+                                    <span class="ml-1 text-[10px] text-amber-400" title="Belum clock-out">⚠️</span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-2">
+                                    {% if att.photo_url %}
+                                    <a href="{{ att.photo_url }}" target="_blank" class="text-emerald-400 hover:text-emerald-300" title="Lihat Bukti Clock In">
+                                        <i class="fas fa-camera"></i>
+                                    </a>
+                                    {% else %}
+                                    <span class="text-gray-600">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-2">
+                                    {% if att.status == 'alpha' %}
+                                    <span class="text-xs px-2 py-0.5 bg-red-500/20 text-red-400 rounded-full">Alpha</span>
+                                    {% elif att.status == 'izin' %}
+                                    <span class="text-xs px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded-full">Izin</span>
+                                    {% elif att.clock_out %}
+                                    <span class="text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full">Lengkap</span>
+                                    {% elif att.clock_in %}
+                                    <span class="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full">Aktif</span>
+                                    {% else %}
+                                    <span class="text-xs px-2 py-0.5 bg-gray-700 text-gray-400 rounded-full">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-2">
+                                    <button type="button"
+                                        class="text-xs text-blue-400 hover:text-blue-300 transition"
+                                        title="Koreksi absensi"
+                                        data-att-id="{{ att.id }}"
+                                        data-att-date="{{ att.date }}"
+                                        data-att-in="{{ att.clock_in or '' }}"
+                                        data-att-out="{{ att.clock_out or '' }}"
+                                        data-att-status="{{ att.status or 'present' }}"
+                                        data-att-user="{{ att.username }}"
+                                        onclick="openCorrectAttendanceModal(this)">
+                                        <i class="fas fa-pen"></i> Edit
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% if not all_attendance %}
+                            <tr><td colspan="7" class="text-center text-gray-600 text-sm py-8">Belum ada data kehadiran</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <!-- Karyawan: Attendance Controls + Calendar + Riwayat Kehadiran -->
+        <div class="space-y-6">
+            <!-- Karyawan: Attendance Controls -->
+            <div class="card p-5 max-w-xl mx-auto">
+                <h2 class="text-lg font-semibold text-white mb-1">
+                    <i class="fas fa-camera text-emerald-400 mr-2"></i>Presensi Mandiri
+                </h2>
+                <p class="text-sm text-gray-500 mb-4">Ambil foto lokasi untuk Clock In/Out</p>
+                
+                <div class="flex justify-center">
+                    <button id="btn-pkl-attendance" onclick="handleKaryawanAttendance()" 
+                            data-today='{% if today_att %}{{ today_att|tojson }}{% else %}null{% endif %}'
+                            class="border-2 border-emerald-500 text-emerald-400 hover:bg-emerald-500 hover:text-white px-8 py-3 rounded-xl text-sm font-bold transition-all duration-300 uppercase tracking-wider">
+                        <i class="fas fa-clock mr-2"></i><span id="pkl-att-text">Loading...</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Calendar Widget (Karyawan view) -->
+            <div class="card p-5">
+                <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
+                    <i class="fas fa-calendar mr-2 text-amber-400"></i>Kalender Presensi
+                </h3>
+                <div id="calendar-widget" data-attendance='{{ all_attendance_for_calendar|tojson }}'>
+                    <div class="flex items-center justify-between mb-4">
+                        <button onclick="changeMonth(-1)" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <div class="text-sm font-medium text-white" id="calendar-month">—</div>
+                        <button onclick="changeMonth(1)" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm text-gray-300">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-7 gap-1 text-center text-xs text-gray-500 mb-1">
+                        <div>Min</div><div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div>
+                    </div>
+                    <div class="grid grid-cols-7 gap-1" id="calendar-grid"></div>
+                    <div class="flex items-center justify-center gap-3 mt-4 text-xs text-gray-500">
+                        <div class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-500/50"></span>Hadir</div>
+                        <div class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-500/30"></span>Izin</div>
+                        <div class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-500/30"></span>Alpha</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card p-5">
+                <h2 class="text-lg font-semibold text-white mb-1">
+                    <i class="fas fa-table text-blue-400 mr-2"></i>Riwayat Kehadiran
+                </h2>
+                <p class="text-sm text-gray-500 mb-4">Daftar lengkap presensi (read-only)</p>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-xs text-gray-500 border-b border-gray-800">
+                                <th class="py-3 px-2 font-medium">Tanggal</th>
+                                <th class="py-3 px-2 font-medium">Clock In</th>
+                                <th class="py-3 px-2 font-medium">Clock Out</th>
+                                <th class="py-3 px-2 font-medium">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for att in recent_attendance %}
+                            <tr class="border-b border-gray-800/50 hover:bg-gray-900/30">
+                                <td class="py-3 px-2 text-white">{{ att.date }}</td>
+                                <td class="py-3 px-2 text-gray-400">
+                                    {{ att.clock_in or '-' }}
+                                    {% if att.photo_url %}
+                                    <a href="{{ att.photo_url }}" target="_blank" class="ml-2 text-emerald-400 hover:text-emerald-300" title="Lihat Bukti Clock In">
+                                        <i class="fas fa-camera text-xs"></i>
+                                    </a>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-2 text-gray-400">{{ att.clock_out or '-' }}</td>
+                                <td class="py-3 px-2">
+                                    {% if att.status == 'alpha' %}
+                                    <span class="text-xs px-2 py-0.5 bg-red-500/20 text-red-400 rounded-full">Alpha</span>
+                                    {% elif att.status == 'izin' %}
+                                    <span class="text-xs px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded-full">Izin</span>
+                                    {% elif att.clock_out %}
+                                    <span class="text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full">Lengkap</span>
+                                    {% elif att.clock_in %}
+                                    <span class="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full">Aktif</span>
+                                    {% else %}
+                                    <span class="text-xs px-2 py-0.5 bg-gray-700 text-gray-400 rounded-full">—</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% if not recent_attendance %}
+                            <tr><td colspan="4" class="text-center text-gray-600 text-sm py-8">Belum ada data kehadiran</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- ============== TAB: TUGAS ============== -->
+    <div data-tab-content="tugas" class="tab-content">
+        {% if login_role in ['mentor', 'owner'] %}
+        <!-- MENTOR: Task List + Modal Buat Tugas + Modal Buka Tugas -->
+        <div class="space-y-6">
+            <!-- Header + Buat Tugas Button -->
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-white">
+                        <i class="fas fa-clipboard-list text-blue-400 mr-2"></i>Daftar Tugas
+                    </h2>
+                    <p class="text-sm text-gray-500 mt-0.5">Kelola tugas untuk @{{ user.username }}</p>
+                </div>
+                <button onclick="openModal('modal-buat-tugas')" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition">
+                    <i class="fas fa-plus mr-1"></i>Buat Tugas Baru
+                </button>
+            </div>
+            
+            <!-- Task List (Mentor) - ALL students' tasks + reports -->
+            <div class="card p-5">
+                <div class="space-y-3 max-h-[60vh] overflow-y-auto" id="mentor-task-list">
+                    {% for t in all_tasks %}
+                    {% set student = None %}
+                    {% for u in all_users %}
+                        {% if u.id == t.assigned_to %}
+                            {% set student = u %}
+                        {% endif %}
+                    {% endfor %}
+                    <div class="flex items-center gap-3 p-4 rounded-xl bg-gray-900/60 border border-gray-800 hover:border-blue-500/30 transition"
+                         data-task-id="{{ t.id }}"
+                         data-task-title="{{ t.title|e }}"
+                         data-task-description="{{ t.description or ''|e }}"
+                         data-task-deadline="{{ t.deadline or '' }}"
+                         data-task-status="{{ t.report_status or 'Belum Upload' }}"
+                         data-task-file-url="{{ t.file_url or '' }}"
+                         data-task-report-file-url="{{ t.report_file_url or '' }}"
+                         data-task-catatan="{{ t.report_feedback or '' }}"
+                         data-task-feedback="{{ t.report_feedback or '' }}"
+                         data-task-student="{{ t.assigned_username or '' }}">
+                        <div class="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                            <span class="text-blue-400 font-bold text-xs">#{{ t.id }}</span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="text-sm font-medium text-white">{{ t.title }}</span>
+                                <!-- Student tag -->
+                                {% if student %}
+                                <span class="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full">
+                                    <i class="fas fa-user mr-0.5"></i>@{{ student.username }}
+                                </span>
+                                {% endif %}
+                                <!-- Report status badge -->
+                                {% if t.report_status == 'Menunggu Review' %}
+                                <span class="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-full status-badge">Menunggu Review</span>
+                                {% elif t.report_status == 'Diterima' %}
+                                <span class="text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full status-badge">Diterima</span>
+                                {% elif t.report_status == 'Ditolak' %}
+                                <span class="text-xs px-2 py-0.5 bg-red-500/20 text-red-400 rounded-full status-badge">Ditolak</span>
+                                {% else %}
+                                <span class="text-xs px-2 py-0.5 bg-gray-700/50 text-gray-500 rounded-full status-badge">Belum Upload</span>
+                                {% endif %}
+                            </div>
+                            <div class="text-xs text-gray-500 mt-0.5">
+                                {% if t.deadline %}Deadline: {{ t.deadline }} · {% endif %}
+                                {% if t.report_file_url %}📎 File ter-upload{% elif t.report_id %}📝 Catatan ter-submit{% else %}Belum ada laporan{% endif %}
+                            </div>
+                        </div>
+                        <button onclick="openBukaTugas({{ t.id }}, '{{ t.title|e }}', '{{ t.description or ''|e }}', '{{ t.deadline or ''|e }}', {{ t.report_id or 'null' }}, '{{ t.report_status or ''|e }}', '{{ t.file_url or ''|e }}', '{{ t.report_file_url or ''|e }}', '{{ t.report_feedback or ''|e }}', '{{ t.assigned_username or '' }}')"
+                                class="flex-shrink-0 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs rounded-lg border border-gray-700 transition">
+                            <i class="fas fa-external-link-alt mr-1"></i>Buka
+                        </button>
+                        <button onclick="if(confirm('Yakin hapus tugas ini?')) deleteTask({{ t.id }}, this)" class="flex-shrink-0 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-400 hover:text-red-300 text-xs rounded-lg border border-red-500/30 transition"><i class="fas fa-trash mr-1"></i>Hapus</button>
+                    </div>
+                    {% endfor %}
+                    {% if not my_tasks %}
+                    <div class="text-center text-gray-600 text-sm py-8">
+                        <i class="fas fa-clipboard text-3xl mb-2 opacity-30"></i><br>Belum ada tugas dibuat
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <!-- Karyawan: Task List + Modal Laporkan Tugas + Modal Buka Tugas -->
+        <div class="space-y-6">
+            <!-- Header (no global Laporkan button — moved into each card) -->
+            <div>
+                <h2 class="text-lg font-semibold text-white">
+                    <i class="fas fa-list-check text-emerald-400 mr-2"></i>Tugas Saya
+                </h2>
+                <p class="text-sm text-gray-500 mt-0.5">Klik "Laporkan" di card tugas untuk submit laporan</p>
+            </div>
+            
+            <!-- Task List (Karyawan) -->
+            <div class="card p-5">
+                <div class="space-y-3 max-h-[60vh] overflow-y-auto" id="pkl-task-list">
+                    {% for t in my_reports %}
+                    <div class="flex items-center gap-3 p-4 rounded-xl bg-gray-900/60 border border-gray-800 hover:border-emerald-500/30 transition"
+                         data-task-id="{{ t.id }}"
+                         data-task-title="{{ t.title|e }}"
+                         data-task-description="{{ t.description or ''|e }}"
+                         data-task-deadline="{{ t.deadline or '' }}"
+                         data-task-status="{{ t.report_status if t.report_id else 'Belum Upload' }}"
+                         data-task-file-url="{{ t.file_url or '' }}"
+                         data-task-report-file-url="{{ t.report_file_url or '' }}"
+                         data-task-catatan=""
+                         data-task-feedback="{{ t.feedback or '' }}"
+                         data-task-student="{{ user.username }}"
+                         data-task-mentor-username="{{ t.mentor_username }}">
+                        <div class="w-10 h-10 bg-emerald-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                            <span class="text-emerald-400 font-bold text-xs">#{{ t.id }}</span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-medium text-white">{{ t.title }}</span>
+                                <span class="text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full">
+                                    <i class="fas fa-user-tie mr-0.5"></i>@{{ t.mentor_username }}
+                                </span>
+                                {% if t.report_status == 'Menunggu Review' %}
+                                <span class="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-full status-badge">Menunggu Review</span>
+                                {% elif t.report_status == 'Diterima' %}
+                                <span class="text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full">Diterima ✓</span>
+                                {% elif t.report_status == 'Ditolak' %}
+                                <span class="text-xs px-2 py-0.5 bg-red-500/20 text-red-400 rounded-full status-badge">Ditolak</span>
+                                {% else %}
+                                <span class="text-xs px-2 py-0.5 bg-gray-700/50 text-gray-500 rounded-full status-badge">Belum Upload</span>
+                                {% endif %}
+                            </div>
+                            <div class="text-xs text-gray-500 mt-0.5">
+                                {% if t.deadline %}Deadline: {{ t.deadline }} · {% endif %}
+                                {% if t.report_id %}
+                                    {% if t.report_file_url %}📎 File uploaded{% endif %}
+                                {% endif %}
+                                {% if t.report_status == 'Ditolak' %} — upload ulang{% endif %}
+                            </div>
+                        </div>
+                        <!-- Action buttons (per-card, role-aware) -->
+                        {% if not t.report_id or t.report_status != 'Menunggu Review' %}
+                            <button onclick="laporCard({{ t.id }}, '{{ user.username|e }}')"
+                                    class="flex-shrink-0 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs rounded-lg transition">
+                                <i class="fas fa-upload mr-1"></i>Laporkan
+                            </button>
+                        {% endif %}
+                        <button onclick="openBukaTugas({{ t.id }}, '{{ t.title|e }}', '{{ t.description or ''|e }}', '{{ t.deadline or ''|e }}', {{ t.report_id if t.report_id else 'null' }}, '{{ t.report_status or ''|e }}', '{{ t.file_url or ''|e }}', '{{ t.report_file_url or ''|e }}', '{{ t.feedback or ''|e }}')"
+                                class="flex-shrink-0 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs rounded-lg border border-gray-700 transition">
+                            <i class="fas fa-external-link-alt mr-1"></i>Buka
+                        </button>
+                    </div>
+                    {% endfor %}
+                    {% if not my_reports %}
+                    <div class="text-center text-gray-600 text-sm py-8">
+                        <i class="fas fa-clipboard text-3xl mb-2 opacity-30"></i><br>Belum ada tugas yang diberikan
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+
+<!-- ===== MODALS ===== -->
+
+<!-- Modal: Buat Tugas Baru (Mentor) -->
+<div id="modal-buat-tugas" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg shadow-2xl">
+        <div class="p-5 border-b border-gray-800 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-white"><i class="fas fa-plus-circle mr-2 text-blue-400"></i>Buat Tugas Baru</h3>
+            <button onclick="closeModal('modal-buat-tugas')" class="text-gray-500 hover:text-white transition"><i class="fas fa-times text-xl"></i></button>
+        </div>
+        <div class="p-5 space-y-4">
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Judul Tugas *</label>
+                <input type="text" id="new-task-title" class="form-input w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500" placeholder="Contoh: Laporan Mingguan Karyawan">
+            </div>
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Deskripsi</label>
+                <textarea id="new-task-desc" rows="3" class="form-input w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 resize-none" placeholder="Detail tugas..."></textarea>
+            </div>
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Deadline</label>
+                <input type="date" id="new-task-deadline" class="form-input w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Lampiran File (opsional)</label>
+                <div class="border-2 border-dashed border-gray-700 rounded-xl p-4 text-center hover:border-blue-500/50 transition cursor-pointer bg-gray-950/50"
+                     onclick="document.getElementById('new-task-file').click()"
+                     id="new-task-file-drop">
+                    <i class="fas fa-paperclip text-gray-500 mb-1"></i>
+                    <p class="text-xs text-gray-500" id="new-task-file-label">Klik untuk pilih file</p>
+                </div>
+                <input type="file" id="new-task-file" class="hidden" onchange="document.getElementById('new-task-file-label').textContent = this.files[0]?.name || 'Klik untuk pilih file'">
+            </div>
+            <input type="hidden" id="new-assign-to" value="{{ user.username }}">
+        </div>
+        <div class="p-5 border-t border-gray-800 flex gap-3">
+            <button onclick="closeModal('modal-buat-tugas')" class="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-2.5 rounded-xl text-sm font-medium transition">Batal</button>
+            <button onclick="createTaskModal()" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-xl text-sm font-medium transition"><i class="fas fa-plus mr-1"></i>Buat</button>
+        </div>
+        <div id="modal-create-status" class="px-5 pb-4 text-xs text-center"></div>
+    </div>
+</div>
+
+<!-- Modal: Laporkan Tugas (Karyawan) -->
+<div id="modal-laporan" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg shadow-2xl">
+        <div class="p-5 border-b border-gray-800 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-white"><i class="fas fa-upload mr-2 text-emerald-400"></i>Laporkan Tugas</h3>
+            <button onclick="closeModal('modal-laporan')" class="text-gray-500 hover:text-white transition"><i class="fas fa-times text-xl"></i></button>
+        </div>
+        <div class="p-5 space-y-4">
+            <!-- Locked task info (replaces dropdown) -->
+            <div class="p-3 bg-gray-950/50 border border-gray-700 rounded-xl">
+                <p class="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">Tugas</p>
+                <p class="text-sm font-semibold text-white" id="lap-tugas-title">—</p>
+                <p class="text-xs text-gray-400 mt-0.5" id="lap-tugas-deadline"></p>
+            </div>
+            <input type="hidden" id="lap-task-id" value="">
+            <input type="hidden" id="lap-task-student" value="">
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Upload File</label>
+                <div class="border-2 border-dashed border-gray-700 rounded-xl p-5 text-center hover:border-emerald-500/50 transition cursor-pointer bg-gray-950/50" onclick="document.getElementById('lap-file-upload').click()">
+                    <i class="fas fa-cloud-upload-alt text-2xl text-gray-500 mb-1"></i>
+                    <p class="text-xs text-gray-400" id="lap-file-name">Klik untuk upload file (PDF, DOCX, JPG)</p>
+                    <p class="text-xs text-gray-600 mt-1">Max 10MB</p>
+                </div>
+                <input type="file" id="lap-file-upload" class="hidden" accept=".pdf,.docx,.jpg,.jpeg,.png">
+                <input type="hidden" id="lap-file-url" value="">
+            </div>
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Catatan</label>
+                <textarea id="lap-catatan" rows="4" class="form-input w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-emerald-500 resize-none" placeholder="Jelaskan apa yang sudah kamu kerjakan, kesulitan yang dihadapi, atau catatan penting lainnya..."></textarea>
+            </div>
+        </div>
+        <div class="p-5 border-t border-gray-800 space-y-2">
+            <!-- ── Primary action row: Batal | <dynamic btn> | Submit ── -->
+            <div class="flex gap-3">
+                <button onclick="closeModal('modal-laporan')" id="btn-batal-modal" class="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-2.5 rounded-xl text-sm font-medium transition">Batal</button>
+                <!-- Dynamic middle button: hidden by default, populated by JS -->
+                <button id="btn-batalkan-laporan"
+                        onclick="batalkanLaporanModal()"
+                        class="hidden flex-1 bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-white py-2.5 rounded-xl text-sm font-medium border border-red-500/30 transition">
+                    <i class="fas fa-times-circle mr-1"></i>Batalkan Laporan
+                </button>
+                <button onclick="submitReportModal()" id="btn-submit-report" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 rounded-xl text-sm font-medium transition"><i class="fas fa-paper-plane mr-1"></i>Submit</button>
+            </div>
+            <!-- Helper text shown when modal is reused for editing pending report -->
+            <p id="modal-edit-hint" class="text-xs text-gray-500 text-center hidden">
+                <i class="fas fa-info-circle mr-1"></i>Sedang mengedit laporan yang sudah menunggu review
+            </p>
+        </div>
+        <div id="modal-submit-status" class="px-5 pb-4 text-xs text-center"></div>
+    </div>
+</div>
+
+<!-- Modal: Absensi Karyawan (Camera Capture) -->
+<div id="modal-absensi-pkl" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+        <div class="p-5 border-b border-gray-800 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-white"><i class="fas fa-camera mr-2 text-emerald-400"></i>Bukti Presensi</h3>
+            <button onclick="closeAttendanceModal()" class="text-gray-500 hover:text-white transition"><i class="fas fa-times text-xl"></i></button>
+        </div>
+        <div class="p-5 space-y-4">
+            <div class="relative rounded-xl overflow-hidden bg-black aspect-square border border-gray-700">
+                <video id="absensi-video" class="w-full h-full object-cover" autoplay playsinline></video>
+                <canvas id="absensi-canvas" class="hidden"></canvas>
+                <img id="absensi-preview" class="hidden w-full h-full object-cover absolute inset-0">
+            </div>
+            <div id="absensi-hint" class="text-xs text-center text-gray-500">
+                Posisikan wajah dan lokasi dengan jelas, lalu klik Ambil Foto
+            </div>
+            <div class="flex gap-3">
+                <button onclick="closeAttendanceModal()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl text-sm font-medium transition">Batal</button>
+                <button id="btn-capture-absensi" onclick="captureAttendancePhoto()" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl text-sm font-medium transition">
+                    <i class="fas fa-camera mr-1"></i>Ambil Foto
+                </button>
+                <button id="btn-confirm-absensi" onclick="confirmAttendance()" class="hidden flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl text-sm font-medium transition">
+                    <i class="fas fa-check mr-1"></i>Konfirmasi
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Mentor Koreksi Absensi -->
+<div id="modal-correct-attendance" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+        <div class="p-5 border-b border-gray-800 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-white">
+                <i class="fas fa-user-edit mr-2 text-blue-400"></i><span id="correct-att-title">Koreksi Absensi</span>
+            </h3>
+            <button type="button" onclick="closeCorrectAttendanceModal()" class="text-gray-500 hover:text-white transition">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+        <div class="p-5 space-y-4">
+            <p class="text-xs text-gray-500">
+                Mentor <span class="text-blue-400">@{{ user.username }}</span> hanya bisa koreksi staff
+                <span class="text-emerald-400">@{{ user.username }}</span> (1-to-1).
+            </p>
+            <input type="hidden" id="correct-att-id" value="">
+            <input type="hidden" id="correct-att-student" value="{{ user.username }}">
+
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Tanggal</label>
+                <input type="date" id="correct-att-date"
+                       class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Clock In</label>
+                    <input type="time" id="correct-att-in" step="1"
+                           class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Clock Out</label>
+                    <input type="time" id="correct-att-out" step="1"
+                           class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Status</label>
+                <select id="correct-att-status"
+                        class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500">
+                    <option value="present">Hadir (present)</option>
+                    <option value="izin">Izin</option>
+                    <option value="alpha">Alpha</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-gray-400 mb-1">Catatan (opsional)</label>
+                <input type="text" id="correct-att-note" maxlength="120" placeholder="cth: lupa clock-out, koreksi mentor"
+                       class="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500">
+            </div>
+            <div id="correct-att-status-msg" class="text-xs text-center text-gray-500 min-h-[1rem]"></div>
+            <div class="flex gap-3 pt-1">
+                <button type="button" onclick="closeCorrectAttendanceModal()"
+                        class="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-2.5 rounded-xl text-sm font-medium transition">Batal</button>
+                <button type="button" id="btn-save-correct-att" onclick="submitCorrectAttendance()"
+                        class="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-xl text-sm font-medium transition">
+                    <i class="fas fa-save mr-1"></i>Simpan
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="modal-buka-tugas" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg shadow-2xl">
+        <div class="p-5 border-b border-gray-800 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-white"><i class="fas fa-file-alt mr-2 text-amber-400"></i><span id="buka-title">Tugas</span></h3>
+            <button onclick="closeModal('modal-buka-tugas')" class="text-gray-500 hover:text-white transition"><i class="fas fa-times text-xl"></i></button>
+        </div>
+        <div class="p-5 space-y-4" id="buka-tugas-content">
+            <!-- Content filled by JS -->
+        </div>
+    </div>
+</div>
+
+<!-- Change Password Modal -->
+<div id="change-password-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md shadow-2xl">
+        <div class="p-5 border-b border-gray-800 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-white"><i class="fas fa-key mr-2 text-blue-400"></i>Ganti Sandi</h3>
+            <button onclick="closeChangePasswordModal()" class="text-gray-500 hover:text-white transition">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+        <div class="p-5 space-y-4">
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Password Lama</label>
+                <input type="password" id="old-password" class="form-input w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500" placeholder="••••••">
+            </div>
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Password Baru</label>
+                <input type="password" id="new-password" class="form-input w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500" placeholder="••••••">
+            </div>
+            <div>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Konfirmasi Baru</label>
+                <input type="password" id="confirm-password" class="form-input w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500" placeholder="••••••">
+            </div>
+        </div>
+        <div class="p-5 border-t border-gray-800 flex gap-3">
+            <button onclick="closeChangePasswordModal()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-2.5 rounded-xl text-sm font-medium transition">Batal</button>
+            <button onclick="changePassword()" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-xl text-sm font-medium transition">Simpan</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Profile dropdown
+function toggleProfileMenu() {
+    document.getElementById('profile-menu').classList.toggle('hidden');
+}
+document.addEventListener('click', function(e) {
+    const dropdown = document.getElementById('profile-dropdown');
+    if (dropdown && !dropdown.contains(e.target)) {
+        document.getElementById('profile-menu').classList.add('hidden');
+    }
+});
+
+// Change Password
+function showChangePasswordModal() { document.getElementById('change-password-modal').classList.remove('hidden'); }
+function closeChangePasswordModal() { document.getElementById('change-password-modal').classList.add('hidden'); }
+function changePassword() {
+    const oldPass = document.getElementById('old-password').value;
+    const newPass = document.getElementById('new-password').value;
+    const confirmPass = document.getElementById('confirm-password').value;
+    if (!oldPass || !newPass || !confirmPass) { alert('Semua field harus diisi!'); return; }
+    if (newPass !== confirmPass) { alert('Password baru dan konfirmasi tidak cocok!'); return; }
+    const formData = new FormData();
+    formData.append('old_password', oldPass);
+    formData.append('new_password', newPass);
+    formData.append('confirm_password', confirmPass);
+    formData.append('username', '{{ user.username }}'.replace('@', ''));
+    fetch('/api/change-password', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('Password berhasil diubah! Silakan login ulang.');
+            window.location.href = '/logout';
+        } else {
+            alert(data.error || 'Gagal mengubah password');
+        }
+    })
+    .catch(err => alert('Error: ' + err.message));
+}
+
+// Tab switching
+function switchTab(tabName) {
+    document.querySelectorAll('[data-tab-content]').forEach(el => el.classList.remove('active'));
+    const target = document.querySelector(`[data-tab-content="${tabName}"]`);
+    if (target) target.classList.add('active');
+    document.querySelectorAll('.nav-tab[data-tab]').forEach(t => t.classList.remove('tab-active'));
+    const navTab = document.querySelector(`.nav-tab[data-tab="${tabName}"]`);
+    if (navTab) navTab.classList.add('tab-active');
+    history.replaceState(null, '', '#' + tabName);
+}
+
+document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
+    tab.addEventListener('click', function(e) {
+        const tabName = this.getAttribute('data-tab');
+        if (tabName === 'home') return;
+        e.preventDefault();
+        if (window.location.pathname === '/dashboard') {
+            switchTab(tabName);
+        } else {
+            window.location.href = '/dashboard#' + tabName;
+        }
+    });
+});
+
+(function initTab() {
+    const hash = window.location.hash.replace('#', '');
+    if (hash && ['home', 'absensi', 'tugas'].includes(hash)) {
+        if (hash === 'home') {
+            document.querySelectorAll('[data-tab-content]').forEach(el => el.classList.remove('active'));
+            document.querySelector('[data-tab-content="home"]').classList.add('active');
+        } else {
+            switchTab(hash);
+        }
+    }
+})();
+
+
+// ========== ATTENDANCE LOGIC ==========
+
+let currentAttendanceAction = '';
+let capturedPhotoBlob = null;
+
+async function openAttendanceModal(action) {
+    currentAttendanceAction = action;
+    const modal = document.getElementById('modal-absensi-pkl');
+    const video = document.getElementById('absensi-video');
+    const preview = document.getElementById('absensi-preview');
+    const btnCapture = document.getElementById('btn-capture-absensi');
+    const btnConfirm = document.getElementById('btn-confirm-absensi');
+    
+    // Reset state
+    capturedPhotoBlob = null;
+    preview.classList.add('hidden');
+    video.classList.remove('hidden');
+    btnCapture.classList.remove('hidden');
+    btnConfirm.classList.add('hidden');
+    
+    modal.classList.remove('hidden');
+    
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: 'user' }, 
+            audio: false 
+        });
+        video.srcObject = stream;
+    } catch (err) {
+        alert('Gagal akses kamera: ' + err.message + '. Pastikan izin kamera diberikan!');
+        closeAttendanceModal();
+    }
+}
+
+function closeAttendanceModal() {
+    const modal = document.getElementById('modal-absensi-pkl');
+    const video = document.getElementById('absensi-video');
+    if (video && video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+    }
+    modal.classList.add('hidden');
+}
+
+function captureAttendancePhoto() {
+    const video = document.getElementById('absensi-video');
+    const canvas = document.getElementById('absensi-canvas');
+    const preview = document.getElementById('absensi-preview');
+    const btnCapture = document.getElementById('btn-capture-absensi');
+    const btnConfirm = document.getElementById('btn-confirm-absensi');
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    canvas.toBlob(blob => {
+        capturedPhotoBlob = blob;
+        preview.src = URL.createObjectURL(blob);
+        preview.classList.remove('hidden');
+        video.classList.add('hidden');
+        btnCapture.classList.add('hidden');
+        btnConfirm.classList.remove('hidden');
+    }, 'image/jpeg', 0.8);
+}
+
+async function confirmAttendance() {
+    if (!capturedPhotoBlob) return;
+    
+    const btnConfirm = document.getElementById('btn-confirm-absensi');
+    btnConfirm.disabled = true;
+    btnConfirm.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Proses...';
+    
+    const formData = new FormData();
+    formData.append('photo', capturedPhotoBlob, 'attendance_photo.jpg');
+    
+    // Clock-in MUST hit /api/attendance (UploadFile → R2). Old /api/clock-in
+    // only accepted string photo_url and silently stored empty bukti.
+    const endpoint = currentAttendanceAction === 'clock_in' ? '/api/attendance' : '/api/clock-out';
+    
+    try {
+        const res = await fetch(endpoint, { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.success) {
+            showToast(data.message || 'Berhasil', 'success');
+            setTimeout(() => window.location.reload(), 1200);
+        } else {
+            alert('Gagal: ' + (data.error || 'Terjadi kesalahan'));
+            btnConfirm.disabled = false;
+            btnConfirm.innerHTML = '<i class="fas fa-check mr-1"></i>Konfirmasi';
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+        btnConfirm.disabled = false;
+        btnConfirm.innerHTML = '<i class="fas fa-check mr-1"></i>Konfirmasi';
+    } finally {
+        closeAttendanceModal();
+    }
+}
+
+// ========== Karyawan ATTENDANCE (Single Button) ==========
+let todayAttClockIn = null;
+let todayAttClockOut = null;
+let todayAttStatus = null;
+
+function initKaryawanAttendance() {
+    const btn = document.getElementById('btn-pkl-attendance');
+    const text = document.getElementById('pkl-att-text');
+    if (!btn || !text) return;
+    
+    // Check if today has attendance data from server
+    const todayDataAttr = btn.getAttribute('data-today');
+    if (todayDataAttr) {
+        try {
+            const todayData = JSON.parse(todayDataAttr);
+            todayAttClockIn = todayData.clock_in || null;
+            todayAttClockOut = todayData.clock_out || null;
+            todayAttStatus = todayData.status || null;
+        } catch(e) {}
+    }
+    
+    updateKaryawanButton();
+}
+
+function updateKaryawanButton() {
+    const btn = document.getElementById('btn-pkl-attendance');
+    const text = document.getElementById('pkl-att-text');
+    if (!btn || !text) return;
+    
+    if (todayAttStatus === 'izin' || todayAttStatus === 'alpha') {
+        text.textContent = 'IZIN/ALPHA';
+        btn.disabled = true;
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+    } else if (todayAttClockIn && !todayAttClockOut) {
+        text.textContent = 'Clock Out';
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+    } else if (todayAttClockIn && todayAttClockOut) {
+        text.textContent = 'Selesai';
+        btn.disabled = true;
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+    } else {
+        text.textContent = 'Clock In';
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+}
+
+async function handleKaryawanAttendance() {
+    if (todayAttClockIn && !todayAttClockOut) {
+        // Clock Out - just confirm, no photo
+        if (!confirm('Yakin ingin Clock Out?')) return;
+        
+        const formData = new FormData();
+        const btn = document.getElementById('btn-pkl-attendance');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Proses...';
+        
+        try {
+            const res = await fetch('/api/clock-out', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                setTimeout(() => window.location.reload(), 1200);
+            } else {
+                alert('Gagal: ' + (data.error || 'Terjadi kesalahan'));
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-clock mr-2"></i><span>Clock Out</span>';
+            }
+        } catch (err) {
+            alert('Error: ' + err.message);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-clock mr-2"></i><span>Clock Out</span>';
+        }
+    } else {
+        // Clock In - needs photo
+        await openAttendanceModal('clock_in');
+    }
+}
+
+// Clock In / Clock Out (Mentor Mode - No Photo)
+function markAttendance(action) {
+    // Mentor: no camera. Route clock_in → /api/attendance, clock_out → /api/clock-out
+    const endpoint = action === 'clock_out' ? '/api/clock-out' : '/api/attendance';
+    const formData = new FormData();
+    fetch(endpoint, { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+        const status = document.getElementById('att-status');
+        if (data.success) {
+            if (status) {
+                status.textContent = '✅ ' + (data.message || 'Berhasil');
+                status.className = 'text-xs mt-3 text-center text-emerald-400';
+            }
+            if (data.new_score !== undefined) updateScoreDisplay(data.new_score);
+            setTimeout(() => window.location.reload(), 1200);
+        } else {
+            if (status) {
+                status.textContent = '❌ ' + (data.error || 'Gagal');
+                status.className = 'text-xs mt-3 text-center text-red-400';
+            } else {
+                alert(data.error || 'Gagal');
+            }
+        }
+    })
+    .catch(err => {
+        const status = document.getElementById('att-status');
+        if (status) status.textContent = 'Error: ' + err.message;
+        else alert('Error: ' + err.message);
+    });
+}
+
+// Clock Out with confirmation (Mentor)
+function confirmClockOut() {
+    if (!confirm('Apakah Anda yakin ingin mengakhiri jam kerja staff hari ini?')) return;
+    markAttendance('clock_out');
+}
+
+// Izin / Alpha
+function setStatus(statusType) {
+    const labels = { izin: 'IZIN', alpha: 'ALPHA (skor -1)' };
+    if (!confirm(`Tandai status: ${labels[statusType] || statusType} untuk hari ini?`)) return;
+    const formData = new FormData();
+    formData.append('status', statusType);
+    fetch('/api/attendance-status', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+        const status = document.getElementById('att-status');
+        if (data.success) {
+            if (status) {
+                status.textContent = '✅ ' + (data.message || 'Berhasil');
+                status.className = 'text-xs mt-3 text-center text-emerald-400';
+            }
+            if (data.new_score !== undefined) updateScoreDisplay(data.new_score);
+            setTimeout(() => window.location.reload(), 1200);
+        } else {
+            if (status) {
+                status.textContent = '❌ ' + (data.error || data.message || 'Gagal');
+                status.className = 'text-xs mt-3 text-center text-red-400';
+            } else {
+                alert(data.error || data.message || 'Gagal');
+            }
+        }
+    })
+    .catch(err => {
+        const status = document.getElementById('att-status');
+        if (status) status.textContent = 'Error: ' + err.message;
+        else alert('Error: ' + err.message);
+    });
+}
+
+// Update score in stat card in real-time
+function updateScoreDisplay(newScore) {
+    const el = document.getElementById('stat-score');
+    if (el) {
+        el.textContent = newScore;
+        el.classList.add('text-pink-300');
+        setTimeout(() => el.classList.remove('text-pink-300'), 2000);
+    }
+}
+
+// ========== MENTOR: Koreksi Absensi ==========
+function _toTimeInput(val) {
+    if (!val) return '';
+    // HH:MM:SS or HH:MM → HH:MM or HH:MM:SS for input[type=time]
+    const s = String(val).trim();
+    if (s.length >= 8) return s.slice(0, 8); // HH:MM:SS
+    if (s.length === 5) return s + ':00';
+    return s;
+}
+
+function openCorrectAttendanceModal(btnEl) {
+    const modal = document.getElementById('modal-correct-attendance');
+    if (!modal) return;
+    const title = document.getElementById('correct-att-title');
+    const idEl = document.getElementById('correct-att-id');
+    const dateEl = document.getElementById('correct-att-date');
+    const inEl = document.getElementById('correct-att-in');
+    const outEl = document.getElementById('correct-att-out');
+    const statusEl = document.getElementById('correct-att-status');
+    const noteEl = document.getElementById('correct-att-note');
+    const msg = document.getElementById('correct-att-status-msg');
+    if (msg) { msg.textContent = ''; msg.className = 'text-xs text-center text-gray-500 min-h-[1rem]'; }
+    if (noteEl) noteEl.value = '';
+
+    if (btnEl && btnEl.dataset) {
+        // Edit existing row
+        if (title) title.textContent = 'Edit Absensi';
+        if (idEl) idEl.value = btnEl.dataset.attId || '';
+        if (dateEl) dateEl.value = btnEl.dataset.attDate || '';
+        if (inEl) inEl.value = _toTimeInput(btnEl.dataset.attIn);
+        if (outEl) outEl.value = _toTimeInput(btnEl.dataset.attOut);
+        if (statusEl) statusEl.value = btnEl.dataset.attStatus || 'present';
+        const studentEl = document.getElementById('correct-att-student');
+        if (studentEl && btnEl.dataset.attUser) studentEl.value = btnEl.dataset.attUser;
+    } else {
+        // Create new / blank correction
+        if (title) title.textContent = 'Tambah / Koreksi Absensi';
+        if (idEl) idEl.value = '';
+        // default yesterday WIB-ish (browser local)
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        if (dateEl) dateEl.value = `${yyyy}-${mm}-${dd}`;
+        if (inEl) inEl.value = '07:00:00';
+        if (outEl) outEl.value = '17:00:00';
+        if (statusEl) statusEl.value = 'present';
+    }
+    modal.classList.remove('hidden');
+}
+
+function closeCorrectAttendanceModal() {
+    const modal = document.getElementById('modal-correct-attendance');
+    if (modal) modal.classList.add('hidden');
+}
+
+async function submitCorrectAttendance() {
+    const btn = document.getElementById('btn-save-correct-att');
+    const msg = document.getElementById('correct-att-status-msg');
+    const date = (document.getElementById('correct-att-date') || {}).value || '';
+    const clockIn = (document.getElementById('correct-att-in') || {}).value || '';
+    const clockOut = (document.getElementById('correct-att-out') || {}).value || '';
+    const status = (document.getElementById('correct-att-status') || {}).value || 'present';
+    const student = (document.getElementById('correct-att-student') || {}).value || '';
+    const attId = (document.getElementById('correct-att-id') || {}).value || '';
+    const note = (document.getElementById('correct-att-note') || {}).value || '';
+
+    if (!date) {
+        if (msg) { msg.textContent = 'Tanggal wajib diisi'; msg.className = 'text-xs text-center text-red-400 min-h-[1rem]'; }
+        return;
+    }
+    if (status === 'present' && !clockIn && !attId) {
+        if (msg) { msg.textContent = 'Clock In wajib untuk status Hadir'; msg.className = 'text-xs text-center text-red-400 min-h-[1rem]'; }
+        return;
+    }
+
+    const fd = new FormData();
+    fd.append('date', date);
+    fd.append('clock_in', clockIn);
+    fd.append('clock_out', clockOut);
+    fd.append('status', status);
+    fd.append('student_username', student);
+    fd.append('attendance_id', attId);
+    fd.append('note', note);
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Simpan...';
+    }
+    try {
+        const res = await fetch('/api/attendance/correct', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.success) {
+            if (msg) {
+                msg.textContent = '✅ ' + (data.message || 'Berhasil');
+                msg.className = 'text-xs text-center text-emerald-400 min-h-[1rem]';
+            }
+            setTimeout(() => window.location.reload(), 900);
+        } else {
+            if (msg) {
+                msg.textContent = '❌ ' + (data.error || data.message || 'Gagal');
+                msg.className = 'text-xs text-center text-red-400 min-h-[1rem]';
+            }
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-save mr-1"></i>Simpan';
+            }
+        }
+    } catch (err) {
+        if (msg) {
+            msg.textContent = 'Error: ' + err.message;
+            msg.className = 'text-xs text-center text-red-400 min-h-[1rem]';
+        }
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save mr-1"></i>Simpan';
+        }
+    }
+}
+
+// ========== CALENDAR WIDGET ==========
+let currentCalMonth = new Date().getMonth();
+let currentCalYear = new Date().getFullYear();
+let attendanceData = [];
+
+function initCalendar() {
+    const widget = document.getElementById('calendar-widget');
+    if (!widget) return;
+    try {
+        attendanceData = JSON.parse(widget.getAttribute('data-attendance') || '[]');
+    } catch(e) {
+        attendanceData = [];
+    }
+    renderCalendar();
+}
+
+function renderCalendar() {
+    const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+                        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    document.getElementById('calendar-month').textContent = `${monthNames[currentCalMonth]} ${currentCalYear}`;
+    
+    const grid = document.getElementById('calendar-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    
+    // First day of month (0=Sun, 1=Mon...)
+    const firstDay = new Date(currentCalYear, currentCalMonth, 1).getDay();
+    const daysInMonth = new Date(currentCalYear, currentCalMonth + 1, 0).getDate();
+    
+    const today = new Date();
+    const isCurrentMonth = today.getMonth() === currentCalMonth && today.getFullYear() === currentCalYear;
+    const todayDate = today.getDate();
+    
+    // Empty cells before first day
+    for (let i = 0; i < firstDay; i++) {
+        const empty = document.createElement('div');
+        empty.className = 'cal-day empty';
+        grid.appendChild(empty);
+    }
+    
+    // Day cells
+    for (let day = 1; day <= daysInMonth; day++) {
+        const cell = document.createElement('div');
+        cell.className = 'cal-day';
+        cell.textContent = day;
+        
+        // Check attendance for this date
+        const dateStr = `${currentCalYear}-${String(currentCalMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const att = attendanceData.find(a => a.date === dateStr);
+        
+        if (att) {
+            cell.classList.add('has-att');
+            if (att.status === 'izin') {
+                cell.classList.add('izin');
+            } else if (att.status === 'alpha') {
+                cell.classList.add('alpha');
+            } else if (att.status === 'present' && att.clock_out) {
+                cell.classList.add('complete');
+            } else if (att.clock_in) {
+                cell.classList.add('present');
+            }
+        }
+        
+        if (isCurrentMonth && day === todayDate) {
+            cell.classList.add('today');
+        }
+        
+        grid.appendChild(cell);
+    }
+}
+
+function changeMonth(delta) {
+    currentCalMonth += delta;
+    if (currentCalMonth < 0) {
+        currentCalMonth = 11;
+        currentCalYear--;
+    } else if (currentCalMonth > 11) {
+        currentCalMonth = 0;
+        currentCalYear++;
+    }
+    renderCalendar();
+}
+
+// ========== MODAL HELPERS ==========
+function openModal(id) {
+    document.getElementById(id).classList.remove('hidden');
+}
+function closeModal(id) {
+    document.getElementById(id).classList.add('hidden');
+}
+// Close modals on backdrop click
+document.querySelectorAll('[id^="modal-"]').forEach(modal => {
+    modal.addEventListener('click', function(e) {
+        if (e.target === this) this.classList.add('hidden');
+    });
+});
+
+// ========== CREATE TASK (Modal - Mentor) ==========
+async function deleteTask(taskId, btnEl) {
+    btnEl.disabled = true;
+    btnEl.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>...';
+    
+    try {
+        const res = await fetch(`/api/delete-task/${taskId}`, { method: 'POST' });
+        const data = await res.json();
+        
+        if (data.success) {
+            // Remove card from DOM
+            document.querySelectorAll(`[data-task-id="${taskId}"]`).forEach(card => card.remove());
+            showToast('Tugas berhasil dihapus', 'success');
+        } else {
+            btnEl.disabled = false;
+            btnEl.innerHTML = '<i class="fas fa-trash mr-1"></i>Hapus';
+            showToast(data.error || 'Gagal menghapus', 'error');
+        }
+    } catch(e) {
+        btnEl.disabled = false;
+        btnEl.innerHTML = '<i class="fas fa-trash mr-1"></i>Hapus';
+        showToast('Error: ' + e.message, 'error');
+    }
+}
+
+async function createTaskModal() {
+    const title       = document.getElementById('new-task-title').value.trim();
+    if (!title) {
+        document.getElementById('modal-create-status').innerHTML = '<span class="text-red-400">Judul tugas harus diisi!</span>';
+        return;
+    }
+    const description = document.getElementById('new-task-desc').value.trim();
+    const deadline    = document.getElementById('new-task-deadline').value;
+    const assignedTo  = document.getElementById('new-assign-to').value;
+    const fileInput   = document.getElementById('new-task-file');
+    const btn         = document.querySelector('#modal-buat-tugas button[onclick="createTaskModal()"]');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Memproses...';
+
+    let fileUrl = '';
+    // 1) Upload file first if selected
+    if (fileInput.files.length > 0) {
+        document.getElementById('modal-create-status').innerHTML = '<span class="text-gray-400">Mengupload lampiran...</span>';
+        const uploadFd = new FormData();
+        uploadFd.append('file', fileInput.files[0]);
+        try {
+            const upRes = await fetch('/api/upload-file', { method: 'POST', body: uploadFd });
+            const upData = await upRes.json();
+            if (upData.success) {
+                fileUrl = upData.file_url;
+            }
+        } catch(e) { /* continue without file */ }
+    }
+
+    // 2) Submit task with file_url
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('description', description);
+    formData.append('deadline', deadline);
+    formData.append('assigned_to', assignedTo);
+    formData.append('file_url', fileUrl);
+
+    fetch('/api/assign-task', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('modal-create-status').innerHTML = '<span class="text-emerald-400">Berhasil! Tugas dibuat.</span>';
+            setTimeout(() => { closeModal('modal-buat-tugas'); window.location.reload(); }, 1200);
+        } else {
+            document.getElementById('modal-create-status').innerHTML = '<span class="text-red-400">' + (data.error || 'Gagal') + '</span>';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-plus mr-1"></i>Buat';
+        }
+    })
+    .catch(err => {
+        document.getElementById('modal-create-status').innerHTML = '<span class="text-red-400">Error: ' + err.message + '</span>';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-plus mr-1"></i>Buat';
+    });
+}
+
+// ========== TOAST NOTIFICATION ==========
+function showToast(message, type = 'success') {
+    const colors = {
+        success: 'bg-emerald-500 border-emerald-400 text-white',
+        error:   'bg-red-500 border-red-400 text-white',
+        info:    'bg-blue-500 border-blue-400 text-white',
+    };
+    const icons = {
+        success: 'fa-check-circle text-emerald-200',
+        error:   'fa-times-circle text-red-200',
+        info:    'fa-info-circle text-blue-200',
+    };
+
+    const toast = document.createElement('div');
+    toast.className = `fixed bottom-6 right-6 flex items-center gap-3 px-5 py-3 rounded-xl border shadow-2xl z-[100] ${colors[type] || colors.success} animate-slide-in`;
+    toast.innerHTML = `<i class="fas ${icons[type] || icons.success}"></i><span class="text-sm font-medium">${message}</span>`;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(12px)';
+        toast.style.transition = 'all 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// ========== REAL-TIME TASK CARD STATUS UPDATE (no page reload) ==========
+function updateTaskCardStatus(taskId, status) {
+    // Find ALL task card elements across both tabs (Mentor & Karyawan)
+    document.querySelectorAll(`[data-task-id="${taskId}"]`).forEach(card => {
+        // Find badge inside this card
+        const badge = card.querySelector('.task-status-badge') ||
+                      card.querySelector('[class*="rounded-full"][class*="text-xs"]') ||
+                      card.querySelector('span');
+
+        const statusMap = {
+            'Pending':          { text: 'Belum Upload',     cls: 'bg-gray-700 text-gray-400' },
+            'Menunggu Review':  { text: 'Menunggu Review',  cls: 'bg-yellow-500/20 text-yellow-400' },
+            'Diterima':         { text: 'Diterima',         cls: 'bg-emerald-500/20 text-emerald-400' },
+            'Ditolak':          { text: 'Ditolak',         cls: 'bg-red-500/20 text-red-400' },
+        };
+        const info = statusMap[status] || statusMap['Pending'];
+        if (badge) {
+            badge.textContent = info.text;
+            badge.className = `task-status-badge px-2 py-0.5 rounded-full text-xs font-medium ${info.cls}`;
+        }
+    });
+}
+
+// ========== SUBMIT REPORT (Modal - Karyawan) ==========
+let pendingFile = null;
+
+document.getElementById('lap-file-upload')?.addEventListener('change', function(e) {
+    if (e.target.files[0]) {
+        pendingFile = e.target.files[0];
+        const file = pendingFile;
+        const name = file.name;
+        const size = (file.size / 1024 / 1024).toFixed(2);
+        const icon = getFileIcon(name);
+
+        // Show filename preview below upload area
+        const existing = document.getElementById('file-preview');
+        if (existing) existing.remove();
+
+        const preview = document.createElement('div');
+        preview.id = 'file-preview';
+        preview.className = 'mt-2 flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2 border border-gray-700';
+        preview.innerHTML = `
+            <div class="flex items-center gap-2 min-w-0">
+                <i class="${icon} text-blue-400 text-sm flex-shrink-0"></i>
+                <div class="min-w-0">
+                    <div class="text-xs text-white truncate max-w-[200px]">${name}</div>
+                    <div class="text-[10px] text-gray-500">${size} MB</div>
+                </div>
+            </div>
+            <button onclick="removePendingFile()" class="text-red-400 hover:text-red-300 ml-2 flex-shrink-0" title="Hapus file">
+                <i class="fas fa-times text-sm"></i>
+            </button>`;
+
+        // Insert after upload dropzone
+        const dropzone = document.querySelector('#modal-laporan .border-dashed');
+        dropzone?.insertAdjacentElement('afterend', preview);
+    }
+});
+
+// Helper: pick font-awesome icon by file extension
+function getFileIcon(name) {
+    const ext = name.split('.').pop().toLowerCase();
+    const map = {
+        pdf:  'fa-file-pdf text-red-400',
+        doc:  'fa-file-word text-blue-400',
+        docx: 'fa-file-word text-blue-400',
+        xls:  'fa-file-excel text-green-400',
+        xlsx: 'fa-file-excel text-green-400',
+        jpg:  'fa-file-image text-purple-400',
+        jpeg: 'fa-file-image text-purple-400',
+        png:  'fa-file-image text-purple-400',
+        gif:  'fa-file-image text-purple-400',
+        zip:  'fa-file-archive text-yellow-400',
+        rar:  'fa-file-archive text-yellow-400',
+    };
+    return 'fa-file-alt ' + (map[ext] || 'fa-file-alt text-gray-400');
+}
+
+function removePendingFile() {
+    pendingFile = null;
+    document.getElementById('lap-file-upload').value = '';
+    document.getElementById('lap-file-name').textContent = 'Klik untuk upload file (PDF, DOCX, JPG)';
+    document.getElementById('file-preview')?.remove();
+}
+
+// ========== LAPOR CARD — buka modal, locked to specific task ==========
+function laporCard(taskId, studentUsername) {
+    // Pull task data from localStorage (SSoT)
+    const task = getTaskById(taskId, studentUsername);
+    if (!task) {
+        showToast('Tugas tidak ditemukan', 'error');
+        return;
+    }
+
+    // Reset modal state
+    pendingFile = null;
+    document.getElementById('lap-file-upload').value = '';
+    document.getElementById('lap-catatan').value = task.catatan || '';
+    document.getElementById('lap-file-name').textContent = 'Klik untuk upload file (PDF, DOCX, JPG)';
+    document.getElementById('file-preview')?.remove();
+
+    // Lock modal to specific task
+    document.getElementById('lap-task-id').value      = task.id;
+    document.getElementById('lap-task-student').value = task.student;
+    document.getElementById('lap-tugas-title').textContent = task.title;
+    document.getElementById('lap-tugas-deadline').textContent = task.deadline ? `Deadline: ${task.deadline}` : '';
+    document.getElementById('modal-submit-status').innerHTML = '';
+
+    // ── Dynamic footer button: show "Batalkan Laporan" if report exists & status = 'Menunggu Review' ─────
+    const cancelBtn = document.getElementById('btn-batalkan-laporan');
+    const editHint = document.getElementById('modal-edit-hint');
+    if (freshStatus === 'Menunggu Review') {
+        // Report exists & pending — show Cancel button
+        cancelBtn.classList.remove('hidden');
+        editHint.classList.remove('hidden');
+        editHint.textContent = `Sedang mengedit laporan yang sudah menunggu review (${task.fileName || 'file'} uploaded)`;
+    } else {
+        // No pending report — hide Cancel button
+        cancelBtn.classList.add('hidden');
+        editHint.classList.add('hidden');
+    }
+
+    openModal('modal-laporan');
+}
+
+// ========== BATALKAN LAPORAN (in modal) ────────────────────────────
+async function batalkanLaporanModal() {
+    const taskId      = document.getElementById('lap-task-id').value;
+    const studentName = document.getElementById('lap-task-student').value;
+    const task = getTaskById(taskId, studentName);
+    if (!task) {
+        showToast('Tugas tidak ditemukan', 'error');
+        return;
+    }
+
+    // 1) Update localStorage (client fields → cleared)
+    updateTask({
+        id:           taskId,
+        student:      studentName,
+        status:       'Belum Upload',
+        fileUrl:      '',
+        catatan:      '',
+        fileName:     '',
+        reportId:     null,
+        submittedAt:  null,
+        feedback:     '',
+    });
+
+    // 2) Re-render UI instantly (no reload, reads from fresh localStorage)
+    renderAllTaskCards();
+
+    // 3) Optional: clear server-side report (best-effort, ignore errors)
+    try {
+        if (task.reportId) {
+            await fetch(`/api/cancel-report/${task.reportId}`, { method: 'POST' });
+        }
+    } catch (e) { /* silent; Karyawan can re-submit anyway */ }
+
+    // 4) Close modal + show success toast
+    closeModal('modal-laporan');
+    showToast('Laporan berhasil dibatalkan', 'info');
+}
+
+// ========== BATALKAN LAPORAN (card-level, called from task card button) ==========
+async function batalkanLaporan(taskId, studentUsername) {
+    if (!confirm('Yakin ingin membatalkan laporan ini? Status akan kembali ke "Belum Upload".')) {
+        return;
+    }
+
+    // 1) Update localStorage (client fields → cleared)
+    updateTask({
+        id:           taskId,
+        student:      studentUsername,
+        status:       'Belum Upload',
+        fileUrl:      '',
+        catatan:      '',
+        fileName:     '',
+        reportId:     null,
+        submittedAt:  null,
+        feedback:     '',
+    });
+
+    // 2) Re-render UI instantly (no reload, reads from fresh localStorage)
+    renderAllTaskCards();
+
+    // 3) Optional: clear server-side report (best-effort)
+    try {
+        const task = getTaskById(taskId, studentUsername);
+        if (task && task.reportId) {
+            await fetch(`/api/cancel-report/${task.reportId}`, { method: 'POST' });
+        }
+    } catch (e) { /* silent */ }
+
+    showToast('Laporan dibatalkan', 'info');
+}
+
+// ========== SUBMIT REPORT ==========
+async function submitReportModal() {
+    // ── Reset footer state (hide Cancel button unless task is already pending) ───
+    document.getElementById('btn-batalkan-laporan').classList.add('hidden');
+    document.getElementById('modal-edit-hint').classList.add('hidden');
+    document.getElementById('modal-submit-status').innerHTML = '';
+
+    const taskId      = document.getElementById('lap-task-id').value;
+    const studentName = document.getElementById('lap-task-student').value;
+    const catatan     = document.getElementById('lap-catatan').value.trim();
+
+    if (!taskId) {
+        document.getElementById('modal-submit-status').innerHTML = '<span class="text-red-400">⚠️ Tugas tidak valid</span>';
+        return;
+    }
+
+    // Guard: verify task exists in localStorage (composite key match)
+    const allTasks = loadRawTasks();
+    console.log('[DEBUG] taskId:', taskId, '| student:', studentName, '| localStorage count:', allTasks.length);
+
+    const taskObj = allTasks.find(t => String(t.id) === String(taskId)
+                                      && String(t.student) === String(studentName));
+    if (!taskObj) {
+        document.getElementById('modal-submit-status').innerHTML = '<span class="text-red-400">⚠️ Tugas tidak ditemukan. Refresh halaman dan coba lagi.</span>';
+        return;
+    }
+    console.log('[DEBUG] Task found:', taskObj);
+
+    const btn = document.getElementById('btn-submit-report');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Memproses...';
+    document.getElementById('modal-submit-status').innerHTML = '<span class="text-gray-400">Mendapatkan URL upload...</span>';
+
+    try {
+        let fileUrl = '';
+
+        // Step 1: If file present, upload through our server (proxy → R2)
+        if (pendingFile) {
+            document.getElementById('modal-submit-status').innerHTML =
+                '<span class="text-blue-400"><i class="fas fa-cloud-upload-alt mr-1"></i>Mengupload ke cloud...</span>';
+
+            const fdata = new FormData();
+            fdata.append('file', pendingFile);
+
+            const uploadRes = await fetch('/api/upload-file', { method: 'POST', body: fdata });
+            const uploadData = await uploadRes.json();
+
+            if (!uploadData.success) {
+                throw new Error(uploadData.error || 'Upload gagal');
+            }
+            fileUrl = uploadData.file_url;
+            document.getElementById('modal-submit-status').innerHTML =
+                '<span class="text-blue-400"><i class="fas fa-check mr-1"></i>Upload berhasil! Menyimpan laporan...</span>';
+        }
+
+        // Step 2: Submit report to backend with file_url
+        const formData = new FormData();
+        formData.append('task_id', taskId);
+        formData.append('file_url', fileUrl);
+        formData.append('content', catatan || '');
+
+        const submitRes = await fetch('/api/submit-report', { method: 'POST', body: formData });
+        const submitData = await submitRes.json();
+
+        if (submitData.success) {
+            // ── Update task in localStorage (SINGLE SOURCE OF TRUTH) ───
+            updateTask({
+                id:           taskId,
+                student:      studentName,
+                status:       'Menunggu Review',
+                fileUrl:      fileUrl,
+                catatan:      catatan,
+                fileName:     pendingFile?.name || '',
+                reportId:     submitData.report_id || null,
+                submittedAt:  new Date().toISOString(),
+            });
+
+            // ── Re-render from localStorage directly (NO server scrape) ───
+            // refreshAllTasks() would re-scrape DOM (stale status) and overwrite SOT,
+            // so we call renderAllTaskCards() instead to read from fresh localStorage.
+            renderAllTaskCards();
+
+            // ── Close modal + toast success ──────────────────────
+            closeModal('modal-laporan');
+            showToast('Laporan berhasil dikirim!', 'success');
+
+            // Reset modal state
+            pendingFile = null;
+            document.getElementById('lap-file-upload').value = '';
+            document.getElementById('lap-file-name').textContent = 'Klik untuk upload file (PDF, DOCX, JPG)';
+            const preview = document.getElementById('file-preview');
+            if (preview) preview.remove();
+            document.getElementById('lap-catatan').value = '';
+            document.getElementById('modal-submit-status').innerHTML = '';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>Submit';
+        } else {
+            throw new Error(submitData.error || 'Submit gagal');
+        }
+    } catch (err) {
+        document.getElementById('modal-submit-status').innerHTML =
+            '<span class="text-red-400"><i class="fas fa-times mr-1"></i>' + err.message + '</span>';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>Submit Ulang';
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SINKRONISASI TUGAS — localStorage('pkl_tasks_v1') = SINGLE SOURCE
+//  Schema: { id, title, description, deadline, student, status,
+//             fileUrl, catatan, feedback, reportId, submittedAt, fileName }
+// ═══════════════════════════════════════════════════════════════════════
+
+const STORAGE_KEY = 'pkl_tasks_v1';
+
+// ═══ Current user info (cached from <body data-current-user data-login-role>) ═══
+function getCurrentUser() {
+    const body = document.body;
+    return {
+        username: body.dataset.currentUser || '',
+        role:     body.dataset.loginRole   || 'pkl',
+    };
+}
+
+// ═══ Composite key — id + student (1 student can have N tasks) ═══
+const taskKey = (t) => `${t.id}::${t.student || ''}`;
+const CLIENT_FIELDS = ['fileUrl', 'catatan', 'feedback', 'reportId', 'submittedAt', 'fileName'];
+const SERVER_FIELDS = ['id', 'title', 'description', 'deadline', 'student', 'mentor_username', 'status'];
+
+// ═══════════════════════════════════════════════════════════════════
+//  refreshAllTasks()  —  THE universal refresh
+//  Steps:
+//   1. Scrape current DOM cards (server fresh data)
+//   2. Merge with localStorage (keep client fields per task ID)
+//   3. Save back to localStorage
+//   4. Filter tasks for current username only
+//   5. Re-render all cards (same data for Karyawan & Mentor)
+// ═══════════════════════════════════════════════════════════════════
+function refreshAllTasks() {
+    const user     = getCurrentUser();
+    const username = (user.username || '').replace('@', '');
+
+    // STEP 1: Scrape all DOM cards → serverTasks
+    const serverCards = Array.from(document.querySelectorAll('[data-task-id]'));
+    const serverTasks = serverCards.map(card => ({
+        id:              card.dataset.taskId,
+        title:           card.dataset.taskTitle        || '',
+        description:     card.dataset.taskDescription  || '',
+        deadline:        card.dataset.taskDeadline     || '',
+        student:         card.dataset.taskStudent      || '',
+        mentor_username: card.dataset.taskMentorUsername || '',
+        status:          card.dataset.taskStatus       || 'Belum Upload',
+        fileUrl:         card.dataset.taskFileUrl      || '',
+        reportFileUrl:   card.dataset.taskReportFileUrl|| '',
+        catatan:         card.dataset.taskCatatan      || '',
+        feedback:        card.dataset.taskFeedback     || '',
+        reportId:        card.dataset.taskReportId     || null,
+    })).filter(t => t.id);
+
+    // STEP 2: Merge with localStorage (ID-based, no composite key)
+    const stored = loadRawTasks();
+    const merged = serverTasks.map(serverTask => {
+        const clientTask = stored.find(s => String(s.id) === String(serverTask.id));
+        if (clientTask) {
+            return { ...serverTask, ...pickFields(clientTask, CLIENT_FIELDS) };
+        }
+        return serverTask;
+    });
+
+    // STEP 3: Save merged back
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+
+    // STEP 4: Filter to current username only (1-to-1 pair)
+    const userTasks = merged.filter(t => {
+        const student = (t.student || '').replace('@', '');
+        return student === username;
+    });
+
+    // STEP 5: Re-render (Karyawan & Mentor see SAME filtered data)
+    renderAllTaskCardsFiltered(userTasks, user);
+    return userTasks.length;
+}
+
+// ═══ Render with pre-filtered task list (same data for Karyawan & Mentor) ═══
+function renderAllTaskCardsFiltered(userTasks, user) {
+    const totalCount   = userTasks.length;
+    const pendingCount = userTasks.filter(t => t.status === 'Belum Upload').length;
+    const reviewCount  = userTasks.filter(t => t.status === 'Menunggu Review').length;
+    const doneCount    = userTasks.filter(t => t.status === 'Diterima').length;
+
+    // Update Mentor counter
+    const mentorTitle = document.querySelector('#mentor-task-list')?.closest('.space-y-6')?.querySelector('h2, h3, .text-xl');
+    if (mentorTitle) mentorTitle.textContent = '📋 Daftar Tugas (' + totalCount + ')';
+
+    // Update Karyawan counter
+    const pklTitle = document.querySelector('#pkl-task-list')?.closest('.space-y-6')?.querySelector('h2, h3, .text-xl');
+    if (pklTitle) pklTitle.textContent = '📋 Tugas Saya (' + totalCount + ')';
+
+    // Capture fresh status from DOM BEFORE clearing (server wins)
+    const pklList    = document.getElementById('pkl-task-list');
+    const mentorList = document.getElementById('mentor-task-list');
+    const taskStatusMap = {};
+    if (pklList)    pklList.querySelectorAll('[data-task-id]').forEach(el => { taskStatusMap[el.dataset.taskId] = { status: el.dataset.taskStatus, fileUrl: el.dataset.taskFileUrl, catatan: el.dataset.taskCatatan, feedback: el.dataset.taskFeedback, reportId: el.dataset.taskReportId }; });
+    if (mentorList) mentorList.querySelectorAll('[data-task-id]').forEach(el => { taskStatusMap[el.dataset.taskId] = { status: el.dataset.taskStatus, fileUrl: el.dataset.taskFileUrl, catatan: el.dataset.taskCatatan, feedback: el.dataset.taskFeedback, reportId: el.dataset.taskReportId }; });
+
+    // Clear containers
+    if (pklList)    pklList.innerHTML    = '';
+    if (mentorList) mentorList.innerHTML = '';
+
+    // Build & inject cards into BOTH containers (same data)
+    userTasks.forEach(task => {
+        const domData = taskStatusMap[task.id] || {};
+        const freshStatus   = domData.status   || task.status   || 'Belum Upload';
+        const freshFileUrl  = domData.fileUrl  || task.fileUrl  || '';
+        const freshCatatan  = domData.catatan  || task.catatan  || '';
+        const freshFeedback = domData.feedback || task.feedback || '';
+        const freshReportId = domData.reportId || task.reportId || '';
+        const cardHtml = buildTaskCardHtml(task, user, freshStatus, freshFileUrl, freshCatatan, freshFeedback, freshReportId);
+        if (pklList)    pklList.insertAdjacentHTML('beforeend',    cardHtml);
+        if (mentorList) mentorList.insertAdjacentHTML('beforeend', cardHtml);
+    });
+}
+
+// Helper: pick only specified fields
+function pickFields(obj, fields) {
+    const result = {};
+    fields.forEach(f => { if (obj[f] !== undefined) result[f] = obj[f]; });
+    return result;
+}
+
+// ═══ Raw load (no merge) — used internally ═══
+function loadRawTasks() {
+    try {
+        // 1. Start with localStorage
+        const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        
+        // 2. Sync with DOM attributes (Fresh data from server)
+        const domElements = document.querySelectorAll('[data-task-id]');
+        const domData = {};
+        
+        domElements.forEach(el => {
+            const id = el.dataset.taskId;
+            if (id) {
+                domData[id] = {
+                    status: el.dataset.taskStatus,
+                    fileUrl: el.dataset.taskFileUrl,
+                    catatan: el.dataset.taskCatatan,
+                    feedback: el.dataset.taskFeedback,
+                    mentor_username: el.dataset.taskMentorUsername
+                };
+            }
+        });
+
+        // 3. Merge: DOM data overrides localStorage
+        return stored.map(task => {
+            const id = String(task.id);
+            if (domData[id]) {
+                return { ...task, ...domData[id] };
+            }
+            return task;
+        });
+    } catch (e) {
+        console.error('[Staff Management] loadRawTasks error:', e);
+        return [];
+    }
+}
+
+// ═══ Save tasks array back to localStorage ═══
+function saveTasks(tasks) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+}
+
+// ═══ getTasksForCurrentUser — NO role filter (Mentor & Karyawan see SAME tasks) ═══
+function getTasksForCurrentUser() {
+    return loadRawTasks();
+}
+
+// ═══ Lookup 1 task by ID only (1-to-1 pair — ID is unique) ═══
+function getTaskById(id) {
+    const tasks = loadRawTasks();
+    return tasks.find(t => String(t.id) === String(id)) || null;
+}
+
+// ═══ Atomic update of one task (SSoT write — ID only, no composite key) ═══
+function updateTask(updatedTask) {
+    const tasks = loadRawTasks();
+    const idx   = tasks.findIndex(t => String(t.id) === String(updatedTask.id));
+    if (idx >= 0) {
+        tasks[idx] = { ...tasks[idx], ...updatedTask };
+    } else {
+        tasks.push(updatedTask);
+    }
+    saveTasks(tasks);
+}
+
+// ═══ Remove task from SSoT ═══
+function removeTask(id) {
+    const tasks = loadRawTasks();
+    saveTasks(tasks.filter(t => String(t.id) !== String(id)));
+}
+
+// ═══ Render — rebuild card list (Mentor & Karyawan see SAME tasks) ═══
+function renderAllTaskCards() {
+    // Load all tasks for current user (filtered by username — 1-to-1 pair)
+    const allTasks = loadRawTasks();
+    const user     = getCurrentUser();
+    const username = (user.username || '').replace('@', '');
+
+    // Filter to ONLY tasks belonging to current username
+    const tasks = allTasks.filter(t => {
+        const student = (t.student || '').replace('@', '');
+        return student === username;
+    });
+
+    // ── Update task counter in both section titles ──
+    const totalCount   = tasks.length;
+    const pendingCount = tasks.filter(t => t.status === 'Belum Upload').length;
+    const reviewCount  = tasks.filter(t => t.status === 'Menunggu Review').length;
+    const doneCount    = tasks.filter(t => t.status === 'Diterima').length;
+
+    // Mentor counter
+    const mentorTitle = document.querySelector('#mentor-task-list')?.closest('.space-y-6')?.querySelector('h2, h3, .text-xl');
+    if (mentorTitle) mentorTitle.textContent = '📋 Daftar Tugas (' + totalCount + ')';
+
+    // Karyawan counter
+    const pklTitle = document.querySelector('#pkl-task-list')?.closest('.space-y-6')?.querySelector('h2, h3, .text-xl');
+    if (pklTitle) pklTitle.textContent = '📋 Tugas Saya (' + totalCount + ')';
+
+    // ── Capture fresh status from DOM BEFORE clearing (server wins) ──
+    const pklList    = document.getElementById('pkl-task-list');
+    const mentorList = document.getElementById('mentor-task-list');
+    const taskStatusMap = {};
+    if (pklList)    pklList.querySelectorAll('[data-task-id]').forEach(el => { taskStatusMap[el.dataset.taskId] = { status: el.dataset.taskStatus, fileUrl: el.dataset.taskFileUrl, catatan: el.dataset.taskCatatan, feedback: el.dataset.taskFeedback, reportId: el.dataset.taskReportId }; });
+    if (mentorList) mentorList.querySelectorAll('[data-task-id]').forEach(el => { taskStatusMap[el.dataset.taskId] = { status: el.dataset.taskStatus, fileUrl: el.dataset.taskFileUrl, catatan: el.dataset.taskCatatan, feedback: el.dataset.taskFeedback, reportId: el.dataset.taskReportId }; });
+
+    // ── Clear containers ──
+    if (pklList)    pklList.innerHTML    = '';
+    if (mentorList) mentorList.innerHTML = '';
+
+    // ── Build & inject cards into BOTH containers (same data) ──
+    tasks.forEach(task => {
+        // Read from captured DOM map (server data) — falls back to localStorage
+        const domData = taskStatusMap[task.id] || {};
+        const freshStatus   = domData.status   || task.status   || 'Belum Upload';
+        const freshFileUrl  = domData.fileUrl  || task.fileUrl  || '';
+        const freshCatatan  = domData.catatan  || task.catatan  || '';
+        const freshFeedback = domData.feedback || task.feedback || '';
+        const freshReportId = domData.reportId || task.reportId || '';
+
+        const cardHtml = buildTaskCardHtml(task, user, freshStatus, freshFileUrl, freshCatatan, freshFeedback, freshReportId);
+        if (pklList)    pklList.insertAdjacentHTML('beforeend',    cardHtml);
+        if (mentorList) mentorList.insertAdjacentHTML('beforeend', cardHtml);
+    });
+
+    return tasks.length;
+}
+
+// ═══ Build card HTML (shared between Karyawan & Mentor) ═══
+function buildTaskCardHtml(task, user, freshStatus, freshFileUrl, freshCatatan, freshFeedback, freshReportId) {
+    const statusMap = {
+        'Belum Upload':    { text: 'Belum Upload',    cls: 'bg-gray-700/50 text-gray-500' },
+        'Menunggu Review': { text: 'Menunggu Review', cls: 'bg-yellow-500/20 text-yellow-400' },
+        'Diterima':        { text: 'Diterima',        cls: 'bg-emerald-500/20 text-emerald-400' },
+        'Ditolak':         { text: 'Ditolak',         cls: 'bg-red-500/20 text-red-400' },
+    };
+    const si = statusMap[freshStatus] || statusMap['Belum Upload'];
+    const deadlineText = task.deadline ? 'Deadline: ' + task.deadline : 'No Deadline';
+    const fileText = freshFileUrl
+        ? '📎 File ter-upload'
+        : (freshCatatan ? '📝 Catatan ter-submit' : 'Belum ada laporan');
+
+    let actionBtn = '';
+        if (user.role === 'pkl') {
+            // Karyawan mode: only show Buka button
+            actionBtn = '<button onclick="window.location.href=\'/tugas/' + task.id + '\'" class="flex-shrink-0 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg transition"><i class="fas fa-external-link-alt mr-1"></i>Buka</button>';
+        } else {
+        // Mentor mode
+        let reviewBtn = '';
+        if (freshStatus === 'Menunggu Review') {
+            reviewBtn = '<button onclick="window.location.href=\'/tugas/' + task.id + '\'" class="flex-shrink-0 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs rounded-lg transition"><i class="fas fa-clipboard-check mr-1"></i>Review</button>';
+        }
+        actionBtn = reviewBtn + ' <button onclick="window.location.href=\'/tugas/' + task.id + '\'" class="flex-shrink-0 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg transition"><i class="fas fa-external-link-alt mr-1"></i>Buka</button>';
+    }
+
+    const isKaryawan = user.role === 'pkl';
+    const idColor = isKaryawan ? 'text-emerald-400' : 'text-blue-400';
+    const idBg = isKaryawan ? 'bg-emerald-500/20' : 'bg-blue-500/20';
+    const currUsername = (user.username || '').replace('@', '');
+    const userBadge = isKaryawan 
+        ? '<span class="text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full"><i class="fas fa-user mr-0.5"></i>@' + currUsername + '</span>'
+        : '<span class="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full"><i class="fas fa-user mr-0.5"></i>@' + (task.student || 'student') + '</span>';
+
+    return '<div class="flex items-center gap-3 p-4 rounded-xl bg-gray-900/60 border border-gray-800 hover:border-' + (isKaryawan ? 'emerald' : 'blue') + '-500/30 transition" ' +
+        'data-task-id="' + task.id + '" ' +
+        'data-task-status="' + freshStatus + '" ' +
+        'data-task-file-url="' + freshFileUrl + '" ' +
+        'data-task-catatan="' + freshCatatan + '" ' +
+        'data-task-feedback="' + freshFeedback + '" ' +
+        'data-task-report-id="' + freshReportId + '">' +
+        '<div class="w-10 h-10 ' + idBg + ' rounded-xl flex items-center justify-center flex-shrink-0">' +
+        '<span class="' + idColor + ' font-bold text-xs">#' + task.id + '</span>' +
+        '</div>' +
+        '<div class="flex-1 min-w-0">' +
+        '    <div class="flex items-center gap-2">' +
+        '        <span class="text-sm font-medium text-white">' + (task.title||'') + '</span>' +
+        '        ' + userBadge + ' ' +
+        '        <span class="text-xs px-2 py-0.5 rounded-full ' + si.cls + '">' + si.text + '</span>' +
+        '    </div>' +
+        '    <div class="text-xs text-gray-500 mt-0.5">' +
+        '        ' + (task.deadline ? 'Deadline: ' + task.deadline + ' · ' : '') +
+        '        ' + fileText + ' ' +
+        '        ' + (freshStatus === 'Ditolak' ? ' — upload ulang' : '') +
+        '    </div>' +
+        '</div>' +
+        '    ' + actionBtn + ' ' +
+        '</div>';
+}
+
+function renderTaskCard(cardEl, task) {
+    const statusMap = {
+        'Belum Upload':    { text: 'Belum Upload',    cls: 'bg-gray-700/50 text-gray-500' },
+        'Menunggu Review': { text: 'Menunggu Review', cls: 'bg-yellow-500/20 text-yellow-400' },
+        'Diterima':        { text: 'Diterima',        cls: 'bg-emerald-500/20 text-emerald-400' },
+        'Ditolak':         { text: 'Ditolak',         cls: 'bg-red-500/20 text-red-400' },
+    };
+    const freshStatus = cardEl.dataset.taskStatus || task.status || 'Belum Upload';
+    const info = statusMap[freshStatus] || statusMap['Belum Upload'];
+
+    // Sync data-attributes (SSoT re-publish)
+    // Preserve DOM data-attributes (set by buildTaskCardHtml or server render)
+
+    // Update status badge (first span.rounded-full in card)
+    const badge = cardEl.querySelector('span.rounded-full');
+    if (badge) {
+        badge.className = 'inline-block text-xs px-2 py-0.5 rounded-full ' + info.cls;
+        badge.textContent = info.text;
+    }
+
+    // Update subtitle (deadline + file info)
+    const subtitle = cardEl.querySelector('div.text-xs.text-gray-500');
+    if (subtitle) {
+        const deadline = task.deadline ? `Deadline: ${task.deadline} · ` : '';
+        const fileInfo = task.fileUrl
+            ? '📎 File ter-upload'
+            : (task.catatan ? '📝 Catatan ter-submit' : 'Belum ada laporan');
+        subtitle.textContent = deadline + fileInfo;
+    }
+}
+
+// ═══ Exports for inline onclick handlers ═══
+window.getTaskById           = getTaskById;
+window.getAllTasks           = () => loadRawTasks();
+window.getTasksForCurrentUser = getTasksForCurrentUser;
+window.updateTask            = updateTask;
+window.removeTask            = removeTask;
+window.renderAllTaskCards    = renderAllTaskCards;
+window.refreshAllTasks       = refreshAllTasks;
+window.renderAllTaskCardsFiltered = renderAllTaskCardsFiltered;
+window.saveTasks             = saveTasks;
+window.getCurrentUser        = getCurrentUser;
+window.batalkanLaporan       = batalkanLaporan;
+
+// ═══ Init on page load — pull fresh from server, merge, render ═══
+document.addEventListener('DOMContentLoaded', function() {
+    const total = refreshAllTasks();
+    console.log('[Staff Management] SSoT synced. Tasks visible:', total,
+                '| role:', getCurrentUser().role,
+                '| user:', getCurrentUser().username);
+});
+
+// ========== BUKA TUGAS (Shared modal - role-aware) ==========
+function openBukaTugas(taskId, title, description, deadline, reportId, reportStatus, taskFileUrl, reportFileUrl, reportFeedback, studentName) {
+    // Always read freshest data from localStorage (overrides stale HTML params)
+    const task = (typeof window.getTaskById === 'function')
+        ? window.getTaskById(taskId)
+        : null;
+
+    // Use localStorage data if available (fresh), else fall back to HTML params
+    const currentStatus   = (task?.status)         || reportStatus  || 'Pending';
+    const currentTaskFileUrl = (task?.fileUrl)     || taskFileUrl   || '';
+    const currentReportFileUrl = (task?.reportFileUrl) || reportFileUrl || '';
+    const currentCatatan = (task?.catatan)        || reportFeedback || '';
+
+    const loginRole = document.querySelector('[data-login-role]')?.dataset.loginRole || 'pkl';
+    document.getElementById('buka-title').textContent = title + (studentName ? ' — ' + studentName : '');
+
+    const content = document.getElementById('buka-tugas-content');
+
+    let html = `
+        <div class="space-y-3">
+            <div class="bg-gray-950 rounded-xl p-4">
+                <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Deskripsi Tugas</div>
+                <div class="text-sm text-white">${description || '<i class="text-gray-600">Tidak ada deskripsi</i>'}</div>
+                ${deadline ? '<div class="text-xs text-gray-500 mt-2">Deadline: <span class="text-amber-400">' + deadline + '</span></div>' : ''}
+            </div>`;
+
+    // Show task attachment (mentor's file) if available
+    if (currentTaskFileUrl) {
+        html += `
+            <div class="bg-gray-950 rounded-xl p-4">
+                <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Lampiran Mentor</div>
+                ${currentTaskFileUrl.toLowerCase().endsWith('.pdf')
+                    ? `<iframe src="${currentTaskFileUrl}" class="w-full h-64 border border-gray-700 rounded"></iframe>`
+                    : `<a href="${currentTaskFileUrl}" target="_blank" class="text-sm text-blue-400 hover:text-blue-300 underline"><i class="fas fa-paperclip mr-1"></i>Buka Lampiran</a>`}
+            </div>`;
+    }
+    
+    // Show report section if reportId exists OR status is not 'Belum Upload'
+    if (reportId || (currentStatus && currentStatus !== 'Belum Upload')) {
+        const statusClass = {
+            'Menunggu Review': 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
+            'Diterima': 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
+            'Ditolak': 'bg-red-500/20 text-red-400 border border-red-500/30'
+        }[currentStatus] || 'bg-gray-700 text-gray-400';
+        
+        html += `
+            <div class="bg-gray-950 rounded-xl p-4">
+                <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Laporan Karyawan</div>
+                ${currentStatus ? '<div class="text-xs px-2 py-1 rounded-lg inline-block mb-2 ' + statusClass + '">' + currentStatus + '</div>' : ''}
+                ${currentReportFileUrl ? '<div class="mb-2"><a href="' + currentReportFileUrl + '" target="_blank" class="text-sm text-blue-400 hover:text-blue-300 underline"><i class="fas fa-external-link-alt mr-1"></i>Buka/Download File</a></div>' : ''}
+                ${currentCatatan ? '<div class="text-xs text-gray-400"><i class="fas fa-comment mr-1 text-emerald-400"></i>' + currentCatatan + '</div>' : ''}
+            </div>`;
+        
+        // Mentor: review buttons only if "Menunggu Review"
+        if (loginRole === 'mentor' && currentStatus === 'Menunggu Review') {
+            html += `
+            <div class="flex gap-3" id="review-buttons">
+                <button onclick="reviewReport(${reportId}, 'accept', '${currentCatatan || ''}')"
+                        class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 rounded-xl text-sm font-medium transition">
+                    <i class="fas fa-check mr-1"></i>Terima
+                </button>
+                <button onclick="reviewReport(${reportId}, 'reject', '${currentCatatan || ''}')"
+                        class="flex-1 bg-red-500 hover:bg-red-600 text-white py-2.5 rounded-xl text-sm font-medium transition">
+                    <i class="fas fa-times mr-1"></i>Tolak
+                </button>
+            </div>
+            <div id="review-status" class="text-xs text-center"></div>`;
+        }
+    } else {
+        // Belum ada laporan — show "Laporkan Tugas" button for Karyawan
+        const isPkl = (loginRole === 'pkl');
+        html += `
+            <div class="bg-gray-950 rounded-xl p-4 text-center">
+                <div class="text-sm text-gray-500 mb-3">Belum ada laporan yang di-submit</div>
+                ${isPkl ? `
+                <button onclick="closeModal('modal-buka-tugas'); laporCard(${taskId}, '${studentName || ''}')"
+                        class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition">
+                    <i class="fas fa-upload mr-1"></i>Laporkan Tugas
+                </button>` : ''}
+            </div>`;
+    }
+    
+    html += '</div>';
+    content.innerHTML = html;
+    openModal('modal-buka-tugas');
+}
+
+// ═══ INLINE REVIEW — quick accept/reject from card (Mentor) ═══
+function openReviewInline(taskId, studentName, reportId, currentFeedback) {
+    const task = (typeof window.getTaskById === 'function') ? window.getTaskById(taskId) : null;
+    const status = (task?.status) || 'Menunggu Review';
+    const fileUrl = (task?.reportFileUrl) || '';
+    const feedback = (task?.feedback) || currentFeedback || '';
+
+    document.getElementById('buka-title').textContent = '#' + taskId + ' — Review Laporan @' + studentName;
+
+    const html = `
+        <div class="space-y-3">
+            <div class="bg-gray-950 rounded-xl p-4">
+                <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Status</div>
+                <span class="text-xs px-2 py-1 rounded-lg inline-block bg-yellow-500/20 text-yellow-400">${status}</span>
+            </div>
+            ${fileUrl ? `
+            <div class="bg-gray-950 rounded-xl p-4">
+                <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">File Laporan</div>
+                <a href="${fileUrl}" target="_blank" class="text-sm text-blue-400 hover:text-blue-300 underline"><i class="fas fa-external-link-alt mr-1"></i>Buka/Download File</a>
+            </div>` : ''}
+            ${feedback ? `
+            <div class="bg-gray-950 rounded-xl p-4">
+                <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Catatan</div>
+                <div class="text-sm text-gray-300">${feedback}</div>
+            </div>` : ''}
+            <div class="flex gap-3">
+                <button onclick="reviewReport(${reportId}, 'accept', '${(feedback||'').replace(/'/g, "\\'")}')"
+                        class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 rounded-xl text-sm font-medium transition">
+                    <i class="fas fa-check mr-1"></i>Terima
+                </button>
+                <button onclick="reviewReport(${reportId}, 'reject', '${(feedback||'').replace(/'/g, "\\'")}')"
+                        class="flex-1 bg-red-500 hover:bg-red-600 text-white py-2.5 rounded-xl text-sm font-medium transition">
+                    <i class="fas fa-times mr-1"></i>Tolak
+                </button>
+            </div>
+            <div id="review-status" class="text-xs text-center"></div>
+        </div>`;
+
+    document.getElementById('buka-tugas-content').innerHTML = html;
+    openModal('modal-buka-tugas');
+}
+
+function reviewReport(reportId, action, currentFeedback) {
+    const btnClass = action === 'accept' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600';
+    const feedbackPrompt = action === 'accept' ? 'Feedback (opsional):' : 'Alasan penolakan:';
+    const feedbackDefault = action === 'accept' ? 'Tugas sudah sesuai' : 'Mohon upload ulang dengan perbaikan';
+    
+    const feedback = prompt(feedbackPrompt, feedbackDefault) || '';
+    
+    const formData = new FormData();
+    formData.append('report_id', reportId);
+    formData.append('action', action);
+    formData.append('feedback', feedback);
+    
+    document.getElementById('review-status').innerHTML = '<span class="text-blue-400"><i class="fas fa-spinner fa-spin mr-1"></i>Memproses...</span>';
+    
+    fetch('/api/review-report', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            // ── Update task in localStorage (SINGLE SOURCE OF TRUTH) ───
+            // Find task by reportId, then update status
+            const tasks = loadRawTasks();
+            const task = tasks.find(t => String(t.reportId) === String(reportId));
+            if (task) {
+                task.status = data.status;
+                task.feedback = data.feedback || '';
+                saveTasks(tasks);
+            }
+
+            // ── Re-render all task cards (no reload) — also re-scrapes server DOM ─────
+            refreshAllTasks();
+
+            document.getElementById('review-status').innerHTML =
+                '<span class="text-emerald-400"><i class="fas fa-check-circle mr-1"></i>Status: ' + data.status + '</span>';
+            document.getElementById('review-buttons')?.remove();
+
+            const label = data.status === 'Diterima' ? 'Tugas diterima! Terima kasih.' : 'Tugas ditolak. Anak Karyawan bisa upload ulang.';
+            showToast(label, data.status === 'Diterima' ? 'success' : 'info');
+            setTimeout(() => closeModal('modal-buka-tugas'), 1500);
+        } else {
+            document.getElementById('review-status').innerHTML = 
+                '<span class="text-red-400"><i class="fas fa-times mr-1"></i>' + (data.error || 'Gagal') + '</span>';
+        }
+    })
+    .catch(err => {
+        document.getElementById('review-status').innerHTML = 
+            '<span class="text-red-400"><i class="fas fa-times mr-1"></i>Error: ' + err.message + '</span>';
+    });
+}
+
+// ========== LEGACY FUNCTIONS (kept for compatibility) ==========
+function assignTask() {
+    const title = document.getElementById('task-title')?.value?.trim();
+    if (!title) { alert('Judul tugas harus diisi!'); return; }
+    const assignedTo = document.getElementById('assign-to')?.value;
+    const description = document.getElementById('task-desc')?.value?.trim();
+    const deadline = document.getElementById('task-deadline')?.value;
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('assigned_to', assignedTo);
+    formData.append('description', description || '');
+    formData.append('deadline', deadline || '');
+    fetch('/api/assign-task', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+        const status = document.getElementById('task-status');
+        if (data.success) {
+            status.textContent = '✅ Tugas berhasil dibuat!';
+            status.className = 'text-xs mt-3 text-emerald-400';
+            // Re-scrape server DOM (new task) → localStorage → re-render
+            setTimeout(() => {
+                refreshAllTasks();
+                showToast('Tugas baru ditambahkan', 'success');
+            }, 500);
+        } else {
+            status.textContent = '❌ ' + (data.error || 'Gagal');
+            status.className = 'text-xs mt-3 text-red-400';
+        }
+    });
+}
+
+function uploadTask() {
+    const taskId = document.getElementById('task-select')?.value;
+    const note = document.getElementById('daily-note')?.value?.trim();
+    if (!taskId) { alert('Pilih tugas!'); return; }
+    const formData = new FormData();
+    formData.append('task_id', taskId);
+    formData.append('content', note || 'Laporan Karyawan');
+    fetch('/api/submit-report', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+        const status = document.getElementById('upload-status');
+        if (data.success) {
+            status.textContent = '✅ ' + data.message;
+            status.className = 'text-xs mt-3 text-emerald-400';
+            setTimeout(() => window.location.reload(), 1200);
+        } else {
+            status.textContent = '❌ ' + (data.error || 'Gagal');
+            status.className = 'text-xs mt-3 text-red-400';
+        }
+    });
+}
+
+// Defensive fallback for stat values
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('[data-stat]').forEach(el => {
+        const raw = el.textContent.trim();
+        const num = parseInt(raw, 10);
+        if (isNaN(num)) el.textContent = '0';
+    });
+    initCalendar();
+    initKaryawanAttendance();
+});
+</script>
+{% endblock %}
