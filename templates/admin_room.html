@@ -75,7 +75,7 @@
     <!-- Card: Export kehadiran -->
     <section class="ar-card p-5">
       <h2 class="text-white font-semibold mb-1"><i class="fas fa-file-csv mr-2 text-emerald-400"></i>Download Data Kehadiran</h2>
-      <p class="text-xs text-gray-500 mb-4">CSV · mode harian (semua staff, 1 hari) atau per-staff (custom, maks 31 hari).</p>
+      <p class="text-xs text-gray-500 mb-4">Harian = PDF list (No·Nama·Status·Jam). Per staff = kalender absensi (screenshot/print), maks 31 hari.</p>
 
       <div class="flex gap-2 mb-4">
         <button type="button" id="ex-mode-daily" onclick="setExportMode('daily')"
@@ -116,7 +116,7 @@
 
       <div id="ex-status" class="text-xs mt-3"></div>
       <button type="button" onclick="downloadAttendance()" class="mt-3 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-sm">
-        <i class="fas fa-download mr-1"></i>Download CSV
+        <i class="fas fa-download mr-1"></i>Download / Buka
       </button>
     </section>
 
@@ -196,9 +196,16 @@
         </button>
       </div>
       <div id="du-status" class="text-xs"></div>
-      <button type="button" onclick="deleteUser()" class="w-full px-3 py-2.5 rounded-xl bg-red-500/15 border border-red-500/40 text-red-400 text-sm font-semibold hover:bg-red-500/25">
-        <i class="fas fa-trash mr-1"></i>Hapus username (cascade)
+      <button type="button" id="btn-archive-user" onclick="deleteUser(false)" class="w-full px-3 py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-400 text-sm font-semibold hover:bg-amber-500/25">
+        <i class="fas fa-box-archive mr-1"></i>Arsipkan (soft-delete)
       </button>
+      <button type="button" id="btn-restore-user" onclick="restoreUser()" class="hidden w-full px-3 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/25">
+        <i class="fas fa-trash-restore mr-1"></i>Restore user
+      </button>
+      <button type="button" id="btn-hard-delete-user" onclick="deleteUser(true)" class="w-full px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400/90 text-xs font-medium hover:bg-red-500/20">
+        <i class="fas fa-skull-crossbones mr-1"></i>Hapus permanen (cascade data)
+      </button>
+      <p class="text-[11px] text-gray-600">Arsip = login diblok, data absensi/tugas tetap. Wajib sisa min 1 staff aktif.</p>
     </div>
   </div>
 </div>
@@ -249,10 +256,23 @@
 
   function openUser(u) {
     selected = u;
-    document.getElementById('du-title').textContent = '@' + u.username;
+    const archived = !!(u.archived || u.deleted_at);
+    document.getElementById('du-title').textContent = '@' + u.username + (archived ? ' (arsip)' : '');
     document.getElementById('du-username').textContent = u.username;
-    document.getElementById('du-nama').textContent = u.nama || '—';
+    document.getElementById('du-nama').textContent = (u.display_nama || u.nama || '—') + (archived && u.deleted_at ? ' · diarsip ' + u.deleted_at : '');
     document.getElementById('du-status').innerHTML = '';
+    const ba = document.getElementById('btn-archive-user');
+    const br = document.getElementById('btn-restore-user');
+    const bh = document.getElementById('btn-hard-delete-user');
+    if (ba && br && bh) {
+      if (u.username === 'owner') {
+        ba.classList.add('hidden'); br.classList.add('hidden'); bh.classList.add('hidden');
+      } else if (archived) {
+        ba.classList.add('hidden'); br.classList.remove('hidden'); bh.classList.remove('hidden');
+      } else {
+        ba.classList.remove('hidden'); br.classList.add('hidden'); bh.classList.remove('hidden');
+      }
+    }
     document.getElementById('modal-user').classList.remove('hidden');
   }
 
@@ -283,13 +303,41 @@
     }
   }
 
-  async function deleteUser() {
+  async function deleteUser(hard) {
     if (!selected) return;
-    if (!confirm('Hapus @' + selected.username + '?\n\nCascade: sessions, absensi, tasks, reports + file R2.\nTidak bisa di-undo.')) return;
+    hard = !!hard;
+    const msg = hard
+      ? ('Hapus PERMANEN @' + selected.username + '?\n\nCascade: sessions, absensi, tasks, reports + file.\nTidak bisa di-undo.')
+      : ('Arsipkan @' + selected.username + '?\n\nLogin diblok, data absensi/tugas tetap. Bisa restore.');
+    if (!confirm(msg)) return;
     const st = document.getElementById('du-status');
-    st.innerHTML = '<span class="text-gray-400">Menghapus…</span>';
+    st.innerHTML = '<span class="text-gray-400">' + (hard ? 'Menghapus permanen…' : 'Mengarsip…') + '</span>';
     try {
       const r = await fetch('/api/admin-room/delete-user', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: selected.username, hard: hard })
+      });
+      const d = await r.json();
+      if (!r.ok || !d.success) {
+        st.innerHTML = '<span class="text-red-400">' + esc(d.error || 'Gagal') + '</span>';
+        return;
+      }
+      closeUserModal();
+      loadUsers();
+    } catch (e) {
+      st.innerHTML = '<span class="text-red-400">' + esc(e.message) + '</span>';
+    }
+  }
+
+  async function restoreUser() {
+    if (!selected) return;
+    if (!confirm('Restore @' + selected.username + '?')) return;
+    const st = document.getElementById('du-status');
+    st.innerHTML = '<span class="text-gray-400">Restore…</span>';
+    try {
+      const r = await fetch('/api/admin-room/restore-user', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -297,7 +345,7 @@
       });
       const d = await r.json();
       if (!r.ok || !d.success) {
-        st.innerHTML = '<span class="text-red-400">' + esc(d.error || 'Gagal hapus') + '</span>';
+        st.innerHTML = '<span class="text-red-400">' + esc(d.error || 'Gagal restore') + '</span>';
         return;
       }
       closeUserModal();
@@ -392,8 +440,8 @@ function setExportMode(m) {
 }
 function downloadAttendance() {
   const st = document.getElementById('ex-status');
-  st.textContent = 'Menyiapkan CSV…'; st.className = 'text-xs text-gray-400 mt-3';
-  let url = '/api/admin-room/export-attendance?format=csv&mode=' + encodeURIComponent(exportMode);
+  st.textContent = 'Menyiapkan…'; st.className = 'text-xs text-gray-400 mt-3';
+  let url = '/api/admin-room/export-attendance?format=auto&mode=' + encodeURIComponent(exportMode);
   if (exportMode === 'daily') {
     const date = document.getElementById('ex-date').value;
     if (!date) { st.textContent = 'Pilih tanggal dulu'; st.className = 'text-xs text-red-400 mt-3'; return; }
@@ -403,13 +451,19 @@ function downloadAttendance() {
     const f = document.getElementById('ex-from').value;
     const t = document.getElementById('ex-to').value;
     if (!u || !f || !t) { st.textContent = 'Staff + rentang tanggal wajib'; st.className = 'text-xs text-red-400 mt-3'; return; }
-    // client-side 31 day check
     const d0 = new Date(f), d1 = new Date(t);
     const days = Math.round((d1 - d0) / 86400000) + 1;
     if (days > 31 || days < 1) { st.textContent = 'Rentang harus 1–31 hari'; st.className = 'text-xs text-red-400 mt-3'; return; }
     url += '&username=' + encodeURIComponent(u) + '&date_from=' + encodeURIComponent(f) + '&date_to=' + encodeURIComponent(t);
   }
-  // download with credentials
+  if (exportMode === 'staff') {
+    // calendar HTML → open for screenshot / print
+    window.open(url, '_blank');
+    st.textContent = 'Kalender dibuka di tab baru — Print atau screenshot.';
+    st.className = 'text-xs text-emerald-400 mt-3';
+    return;
+  }
+  // daily PDF download
   fetch(url, { credentials: 'same-origin' }).then(async r => {
     if (!r.ok) {
       let msg = 'Gagal download';
@@ -420,13 +474,13 @@ function downloadAttendance() {
     const blob = await r.blob();
     const a = document.createElement('a');
     const cd = r.headers.get('Content-Disposition') || '';
-    let fname = 'kehadiran.csv';
+    let fname = 'kehadiran.pdf';
     const m = /filename="([^"]+)"/.exec(cd);
     if (m) fname = m[1];
     a.href = URL.createObjectURL(blob);
     a.download = fname;
     document.body.appendChild(a); a.click(); a.remove();
-    st.textContent = 'Download dimulai: ' + fname;
+    st.textContent = 'Download: ' + fname;
     st.className = 'text-xs text-emerald-400 mt-3';
   }).catch(e => {
     st.textContent = String(e); st.className = 'text-xs text-red-400 mt-3';

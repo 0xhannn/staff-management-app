@@ -60,6 +60,13 @@ def init_db():
     if 'score' not in cols:
         cur.execute('ALTER TABLE users ADD COLUMN score INTEGER DEFAULT 100')
 
+    # Soft-delete: deleted_at on users (NULL = active)
+    cur.execute("PRAGMA table_info(users)")
+    cols = [row[1] for row in cur.fetchall()]
+    if 'deleted_at' not in cols:
+        cur.execute('ALTER TABLE users ADD COLUMN deleted_at TEXT')
+
+
     # Dual-password + role columns
     cur.execute("PRAGMA table_info(users)")
     cols = [row[1] for row in cur.fetchall()]
@@ -222,11 +229,44 @@ def get_user_by_id(user_id: int):
     conn.close()
     return dict(user) if user else None
 
-def get_all_users():
-    """Get all users (for mentor to assign tasks)"""
+
+def is_user_archived(user_or_username) -> bool:
+    """True if user is soft-deleted."""
+    if not user_or_username:
+        return False
+    if isinstance(user_or_username, dict):
+        if 'deleted_at' in user_or_username:
+            return bool(user_or_username.get('deleted_at'))
+        username = user_or_username.get('username')
+        uid = user_or_username.get('id')
+    else:
+        username = str(user_or_username)
+        uid = None
     conn = get_db()
     cur = conn.cursor()
-    cur.execute('SELECT id, username, nama FROM users ORDER BY nama')
+    cur.execute("PRAGMA table_info(users)")
+    cols = {row[1] for row in cur.fetchall()}
+    if 'deleted_at' not in cols:
+        conn.close()
+        return False
+    if uid:
+        cur.execute('SELECT deleted_at FROM users WHERE id = ?', (uid,))
+    else:
+        cur.execute('SELECT deleted_at FROM users WHERE username = ?', ((username or '').strip().lower(),))
+    row = cur.fetchone()
+    conn.close()
+    return bool(row and row['deleted_at'])
+
+def get_all_users(include_archived: bool = False):
+    """Get all users (for mentor to assign tasks). Excludes soft-deleted by default."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(users)")
+    cols = {row[1] for row in cur.fetchall()}
+    if include_archived or 'deleted_at' not in cols:
+        cur.execute('SELECT id, username, nama FROM users ORDER BY nama')
+    else:
+        cur.execute("SELECT id, username, nama FROM users WHERE deleted_at IS NULL OR deleted_at = '' ORDER BY nama")
     users = cur.fetchall()
     conn.close()
     return [dict(u) for u in users]
@@ -855,14 +895,21 @@ def submit_report(task_id: int, user_id: int, file_path: str, file_url: str = No
     return report_id
 
 def review_report(report_id: int, action: str, feedback: str = '') -> dict:
-    """action: 'accept' or 'reject'. Updates status and graded."""
+    """action: 'accept' or 'reject'. Updates status and graded.
+    Reject requires non-empty feedback (min 3 chars).
+    """
     conn = get_db()
     cur = conn.cursor()
+    act = (action or '').strip().lower()
+    fb = (feedback or '').strip()
     
-    if action == 'accept':
+    if act == 'accept':
         new_status = 'Diterima'
         new_graded = 1
-    elif action == 'reject':
+    elif act in ('reject', 'tolak', 'ditolak'):
+        if len(fb) < 3:
+            conn.close()
+            return {'success': False, 'error': 'Alasan penolakan wajib diisi (min 3 karakter)'}
         new_status = 'Ditolak'
         new_graded = -1
     else:
@@ -875,7 +922,7 @@ def review_report(report_id: int, action: str, feedback: str = '') -> dict:
             graded = ?,
             feedback = ?
         WHERE id = ?
-    ''', (new_status, new_graded, feedback, report_id))
+    ''', (new_status, new_graded, fb if act != 'accept' else (fb or feedback or ''), report_id))
     conn.commit()
     affected = cur.rowcount
     conn.close()
@@ -1264,15 +1311,27 @@ def attendance_rows_to_csv(rows: list) -> str:
     return buf.getvalue()
 
 
-def list_users_admin():
-    """All users for Admin Room (no password hashes exposed)."""
+def list_users_admin(include_archived: bool = True):
+    """All users for Admin Room (no password hashes exposed). Includes archived by default."""
     conn = get_db()
     cur = conn.cursor()
-    cur.execute(
-        'SELECT id, username, nama, role, score, created_at FROM users ORDER BY username COLLATE NOCASE'
-    )
+    cur.execute("PRAGMA table_info(users)")
+    cols = {row[1] for row in cur.fetchall()}
+    if 'deleted_at' in cols:
+        cur.execute(
+            'SELECT id, username, nama, role, score, created_at, deleted_at FROM users ORDER BY username COLLATE NOCASE'
+        )
+    else:
+        cur.execute(
+            'SELECT id, username, nama, role, score, created_at FROM users ORDER BY username COLLATE NOCASE'
+        )
     rows = [dict(r) for r in cur.fetchall()]
     conn.close()
+    for r in rows:
+        r['archived'] = bool(r.get('deleted_at'))
+        r['display_nama'] = r.get('nama') or r.get('username')
+        if r.get('username') == 'owner':
+            r['display_nama'] = 'Manager'
     return rows
 
 
@@ -1297,22 +1356,122 @@ def reset_user_password(username: str, mode: str = 'both', new_password: str = '
     return {'success': True, 'username': user['username'], 'mode': mode, 'password': new_password or '123'}
 
 
-def delete_user_cascade(username: str) -> dict:
-    """Delete user + sessions + attendance + tasks + reports. Returns file URLs for R2 cleanup.
-    Safety: cannot delete system owner; must leave at least 1 staff.
+def _active_staff_count(conn=None) -> int:
+    """Count non-owner staff that are not soft-deleted."""
+    own = conn is not None
+    if not own:
+        conn = get_db()
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(users)")
+    cols = {row[1] for row in cur.fetchall()}
+    if 'deleted_at' in cols:
+        cur.execute(
+            "SELECT COUNT(*) AS c FROM users WHERE username != 'owner' "
+            "AND (deleted_at IS NULL OR deleted_at = '')"
+        )
+    else:
+        cur.execute("SELECT COUNT(*) AS c FROM users WHERE username != 'owner'")
+    c = int(cur.fetchone()['c'] or 0)
+    if not own:
+        conn.close()
+    return c
+
+
+def soft_delete_user(username: str) -> dict:
+    """Archive staff (soft-delete). Keeps attendance/tasks history. Blocks login.
+    Safety: cannot archive system owner; must leave at least 1 active staff.
     """
+    user = get_user_by_username(username)
+    if not user:
+        return {'success': False, 'error': 'User tidak ditemukan'}
+    if (username or '').strip().lower() == 'owner':
+        return {'success': False, 'error': 'Akun sistem Manager tidak bisa dihapus/diarsip'}
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(users)")
+    cols = {row[1] for row in cur.fetchall()}
+    if 'deleted_at' not in cols:
+        cur.execute('ALTER TABLE users ADD COLUMN deleted_at TEXT')
+        cols.add('deleted_at')
+    # already archived?
+    cur.execute('SELECT deleted_at FROM users WHERE id = ?', (user['id'],))
+    row = cur.fetchone()
+    if row and row['deleted_at']:
+        conn.close()
+        return {'success': False, 'error': 'User sudah diarsip'}
+    if _active_staff_count(conn) <= 1:
+        conn.close()
+        return {'success': False, 'error': 'Wajib sisakan minimal 1 staff aktif. Tidak bisa arsip user terakhir.'}
+    from datetime import datetime as _dt
+    now = _dt.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    cur.execute('UPDATE users SET deleted_at = ? WHERE id = ?', (now, user['id']))
+    # kill sessions so they can't stay logged in
+    cur.execute('DELETE FROM sessions WHERE user_id = ?', (user['id'],))
+    conn.commit()
+    conn.close()
+    return {
+        'success': True,
+        'mode': 'soft',
+        'username': user['username'],
+        'user_id': user['id'],
+        'deleted_at': now,
+        'message': 'User diarsip. Data absensi/tugas tetap tersimpan. Bisa restore dari Admin Room.',
+    }
+
+
+def restore_user(username: str) -> dict:
+    """Restore soft-deleted staff."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(users)")
+    cols = {row[1] for row in cur.fetchall()}
+    if 'deleted_at' not in cols:
+        conn.close()
+        return {'success': False, 'error': 'Kolom deleted_at belum ada'}
+    uname = (username or '').strip().lower()
+    cur.execute('SELECT id, username, deleted_at FROM users WHERE username = ?', (uname,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return {'success': False, 'error': 'User tidak ditemukan'}
+    if not row['deleted_at']:
+        conn.close()
+        return {'success': False, 'error': 'User tidak dalam arsip'}
+    cur.execute('UPDATE users SET deleted_at = NULL WHERE id = ?', (row['id'],))
+    conn.commit()
+    conn.close()
+    return {'success': True, 'username': uname, 'message': 'User di-restore'}
+
+
+def delete_user_cascade(username: str, hard: bool = False) -> dict:
+    """Default: soft-delete (archive). hard=True permanently deletes + cascade data.
+    Safety: cannot delete system owner; must leave at least 1 active staff.
+    """
+    if not hard:
+        return soft_delete_user(username)
+
     user = get_user_by_username(username)
     if not user:
         return {'success': False, 'error': 'User tidak ditemukan'}
     if (username or '').strip().lower() == 'owner':
         return {'success': False, 'error': 'Akun sistem Manager tidak bisa dihapus'}
     conn0 = get_db()
-    cur0 = conn0.cursor()
-    cur0.execute("SELECT COUNT(*) AS c FROM users WHERE username != 'owner'")
-    staff_count = int(cur0.fetchone()['c'] or 0)
+    if _active_staff_count(conn0) <= 1:
+        # allow hard-delete of already-archived if other active staff remain
+        cur0 = conn0.cursor()
+        cur0.execute("PRAGMA table_info(users)")
+        cols = {row[1] for row in cur0.fetchall()}
+        if 'deleted_at' in cols:
+            cur0.execute('SELECT deleted_at FROM users WHERE id = ?', (user['id'],))
+            dr = cur0.fetchone()
+            if not (dr and dr['deleted_at']) and _active_staff_count(conn0) <= 1:
+                conn0.close()
+                return {'success': False, 'error': 'Wajib sisakan minimal 1 staff aktif.'}
+        else:
+            conn0.close()
+            return {'success': False, 'error': 'Wajib sisakan minimal 1 staff. Tidak bisa hapus user terakhir.'}
     conn0.close()
-    if staff_count <= 1:
-        return {'success': False, 'error': 'Wajib sisakan minimal 1 staff. Tidak bisa hapus user terakhir.'}
+    uid = user['id']
     uid = user['id']
     conn = get_db()
     cur = conn.cursor()
@@ -1355,6 +1514,7 @@ def delete_user_cascade(username: str) -> dict:
             uniq.append(u)
     return {
         'success': deleted > 0,
+        'mode': 'hard',
         'username': user['username'],
         'user_id': uid,
         'tasks_removed': len(task_ids),

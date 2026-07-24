@@ -245,6 +245,49 @@
             </div>
             {% endif %}
 
+            {% if login_role == 'owner' and manage_username %}
+            <div class="card rounded-xl p-4 max-w-xl mx-auto border border-emerald-500/20">
+                <div class="mb-3">
+                    <h3 class="text-sm font-semibold text-white"><i class="fas fa-file-csv mr-2 text-emerald-400"></i>Download Kehadiran</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">Harian = PDF (No·Nama·Status·Jam). Per staff = kalender (screenshot), maks 31 hari</p>
+                </div>
+                <div class="flex gap-2 mb-3">
+                    <button type="button" id="mgr-ex-daily" onclick="setMgrExportMode('daily')"
+                            class="flex-1 py-2 rounded-xl text-xs font-medium border border-emerald-500/40 bg-emerald-500/15 text-emerald-400">Harian</button>
+                    <button type="button" id="mgr-ex-staff" onclick="setMgrExportMode('staff')"
+                            class="flex-1 py-2 rounded-xl text-xs font-medium border border-gray-700 bg-gray-800 text-gray-300">Per Staff</button>
+                </div>
+                <div id="mgr-ex-daily-box" class="grid gap-2">
+                    <div>
+                        <label class="block text-[10px] uppercase tracking-wider text-gray-500 mb-1">Tanggal</label>
+                        <input type="date" id="mgr-ex-date" class="w-full bg-gray-950 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm">
+                    </div>
+                </div>
+                <div id="mgr-ex-staff-box" class="hidden grid gap-2 sm:grid-cols-3">
+                    <div>
+                        <label class="block text-[10px] uppercase tracking-wider text-gray-500 mb-1">Staff</label>
+                        <select id="mgr-ex-user" class="w-full bg-gray-950 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm">
+                            {% for u in staff_users|default([]) %}
+                            <option value="{{ u.username }}" {% if manage_username == u.username %}selected{% endif %}>@{{ u.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] uppercase tracking-wider text-gray-500 mb-1">Dari</label>
+                        <input type="date" id="mgr-ex-from" class="w-full bg-gray-950 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] uppercase tracking-wider text-gray-500 mb-1">Sampai</label>
+                        <input type="date" id="mgr-ex-to" class="w-full bg-gray-950 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm">
+                    </div>
+                </div>
+                <div id="mgr-ex-status" class="text-xs mt-2"></div>
+                <button type="button" onclick="downloadMgrAttendance()" class="mt-3 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-sm">
+                    <i class="fas fa-download mr-1"></i>Download / Buka
+                </button>
+            </div>
+            {% endif %}
+
             {% if login_role == 'mentor' or (login_role == 'owner' and manage_username) %}
             <div class="card p-5 max-w-xl mx-auto">
                 <h2 class="text-lg font-semibold text-white mb-1">
@@ -2410,10 +2453,16 @@ function openReviewInline(taskId, studentName, reportId, currentFeedback) {
 
 function reviewReport(reportId, action, currentFeedback) {
     const btnClass = action === 'accept' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600';
-    const feedbackPrompt = action === 'accept' ? 'Feedback (opsional):' : 'Alasan penolakan:';
-    const feedbackDefault = action === 'accept' ? 'Tugas sudah sesuai' : 'Mohon upload ulang dengan perbaikan';
+    const feedbackPrompt = action === 'accept' ? 'Feedback (opsional):' : 'Alasan penolakan (WAJIB):';
+    const feedbackDefault = action === 'accept' ? 'Tugas sudah sesuai' : '';
     
-    const feedback = prompt(feedbackPrompt, feedbackDefault) || '';
+    let feedback = prompt(feedbackPrompt, feedbackDefault);
+    if (feedback === null) return; // cancelled
+    feedback = (feedback || '').trim();
+    if (action === 'reject' && feedback.length < 3) {
+        showToast('Alasan penolakan wajib diisi (min 3 karakter)', 'error');
+        return;
+    }
     
     const formData = new FormData();
     formData.append('report_id', reportId);
@@ -2528,5 +2577,83 @@ document.addEventListener('DOMContentLoaded', function() {
     try { switchTab(h); } catch(e) {}
   }
 })();
+
+// ========== Manager export attendance ==========
+let mgrExportMode = 'daily';
+function setMgrExportMode(m) {
+  mgrExportMode = m;
+  const d = document.getElementById('mgr-ex-daily-box');
+  const s = document.getElementById('mgr-ex-staff-box');
+  const bd = document.getElementById('mgr-ex-daily');
+  const bs = document.getElementById('mgr-ex-staff');
+  if (!d || !s) return;
+  if (m === 'daily') {
+    d.classList.remove('hidden'); s.classList.add('hidden');
+    if (bd) bd.className = 'flex-1 py-2 rounded-xl text-xs font-medium border border-emerald-500/40 bg-emerald-500/15 text-emerald-400';
+    if (bs) bs.className = 'flex-1 py-2 rounded-xl text-xs font-medium border border-gray-700 bg-gray-800 text-gray-300';
+  } else {
+    s.classList.remove('hidden'); d.classList.add('hidden');
+    if (bs) bs.className = 'flex-1 py-2 rounded-xl text-xs font-medium border border-emerald-500/40 bg-emerald-500/15 text-emerald-400';
+    if (bd) bd.className = 'flex-1 py-2 rounded-xl text-xs font-medium border border-gray-700 bg-gray-800 text-gray-300';
+  }
+}
+function downloadMgrAttendance() {
+  const st = document.getElementById('mgr-ex-status');
+  if (st) { st.textContent = 'Menyiapkan…'; st.className = 'text-xs text-gray-400 mt-2'; }
+  let url = '/api/manager/export-attendance?format=auto&mode=' + encodeURIComponent(mgrExportMode);
+  if (mgrExportMode === 'daily') {
+    const date = document.getElementById('mgr-ex-date')?.value;
+    if (!date) { if (st) { st.textContent = 'Pilih tanggal dulu'; st.className = 'text-xs text-red-400 mt-2'; } return; }
+    url += '&date=' + encodeURIComponent(date);
+  } else {
+    const u = document.getElementById('mgr-ex-user')?.value;
+    const f = document.getElementById('mgr-ex-from')?.value;
+    const t = document.getElementById('mgr-ex-to')?.value;
+    if (!u || !f || !t) { if (st) { st.textContent = 'Staff + rentang tanggal wajib'; st.className = 'text-xs text-red-400 mt-2'; } return; }
+    const d0 = new Date(f), d1 = new Date(t);
+    const days = Math.round((d1 - d0) / 86400000) + 1;
+    if (days > 31 || days < 1) { if (st) { st.textContent = 'Rentang harus 1–31 hari'; st.className = 'text-xs text-red-400 mt-2'; } return; }
+    url += '&username=' + encodeURIComponent(u) + '&date_from=' + encodeURIComponent(f) + '&date_to=' + encodeURIComponent(t);
+  }
+  if (mgrExportMode === 'staff') {
+    window.open(url, '_blank');
+    if (st) { st.textContent = 'Kalender dibuka di tab baru — Print / screenshot.'; st.className = 'text-xs text-emerald-400 mt-2'; }
+    return;
+  }
+  fetch(url, { credentials: 'same-origin' }).then(async r => {
+    if (!r.ok) {
+      let msg = 'Gagal download';
+      try { const j = await r.json(); msg = j.error || msg; } catch(e) {}
+      if (st) { st.textContent = msg; st.className = 'text-xs text-red-400 mt-2'; }
+      return;
+    }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    const cd = r.headers.get('Content-Disposition') || '';
+    let fname = 'kehadiran.pdf';
+    const mm = /filename="([^"]+)"/.exec(cd);
+    if (mm) fname = mm[1];
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    if (st) { st.textContent = 'Download: ' + fname; st.className = 'text-xs text-emerald-400 mt-2'; }
+  }).catch(e => {
+    if (st) { st.textContent = String(e); st.className = 'text-xs text-red-400 mt-2'; }
+  });
+}
+(function(){
+  const el = document.getElementById('mgr-ex-date');
+  if (el && !el.value) el.value = new Date().toISOString().slice(0,10);
+  // default staff range: last 7 days including today
+  const to = document.getElementById('mgr-ex-to');
+  const fr = document.getElementById('mgr-ex-from');
+  if (to && fr && !to.value) {
+    const n = new Date();
+    to.value = n.toISOString().slice(0,10);
+    const p = new Date(n); p.setDate(p.getDate()-6);
+    fr.value = p.toISOString().slice(0,10);
+  }
+})();
+
 </script>
 {% endblock %}

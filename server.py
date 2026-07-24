@@ -89,6 +89,7 @@ def _git_version():
 APP_VERSION = _git_version()
 
 # ============ IMPORTS ============
+from export_formats import attendance_daily_pdf_bytes, attendance_staff_calendar_html
 from database import (
     init_db, seed_data, get_user_by_username, verify_password, hash_password,
     create_session, get_session, delete_session, get_user_by_id,
@@ -105,6 +106,7 @@ from database import (
     ensure_master_password_seed, ensure_owner_user,
     get_brand_settings, set_brand_settings, get_setting, set_setting,
     export_attendance_rows, attendance_rows_to_csv,
+    soft_delete_user, restore_user, is_user_archived, delete_user_cascade,
 )
 
 try:
@@ -321,6 +323,8 @@ async def login(request: Request, username: str = Form(''), password: str = Form
     user = get_user_by_username(username)
     if not user:
         return JSONResponse(status_code=400, content={'detail': 'Username atau password salah', 'success': False})
+    if is_user_archived(user):
+        return JSONResponse(status_code=403, content={'detail': 'Akun diarsip. Hubungi Manager/Admin Room untuk restore.', 'success': False})
     if role_in in ('pkl', 'karyawan', 'staff'):
         pw_hash = user.get('password_hash_pkl') or user.get('password_hash')
         role = 'pkl'
@@ -509,6 +513,7 @@ async def api_admin_room_reset_password(request: Request):
 
 @app.post('/api/admin-room/delete-user')
 async def api_admin_room_delete_user(request: Request):
+    """Default soft-delete (archive). Pass hard=true for permanent purge."""
     if not _admin_room_ok(request):
         return JSONResponse(status_code=401, content={'success': False, 'error': 'Unauthorized'})
     try:
@@ -518,9 +523,10 @@ async def api_admin_room_delete_user(request: Request):
     username = (body.get('username') or '').strip()
     if not username:
         return JSONResponse(status_code=400, content={'success': False, 'error': 'username wajib'})
-    result = delete_user_cascade(username)
+    hard = bool(body.get('hard') or body.get('permanent') or False)
+    result = delete_user_cascade(username, hard=hard)
     if not result.get('success'):
-        return JSONResponse(status_code=404, content=result)
+        return JSONResponse(status_code=400, content=result)
     for url in result.get('file_urls') or []:
         try:
             await delete_file_from_r2(url)
@@ -528,10 +534,29 @@ async def api_admin_room_delete_user(request: Request):
             print('[admin-room] R2 cleanup fail', url, e)
     return JSONResponse({
         'success': True,
+        'mode': result.get('mode', 'soft' if not hard else 'hard'),
         'username': result.get('username'),
+        'message': result.get('message'),
         'tasks_removed': result.get('tasks_removed', 0),
         'files_purged': len(result.get('file_urls') or []),
     })
+
+
+@app.post('/api/admin-room/restore-user')
+async def api_admin_room_restore_user(request: Request):
+    if not _admin_room_ok(request):
+        return JSONResponse(status_code=401, content={'success': False, 'error': 'Unauthorized'})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    username = (body.get('username') or '').strip()
+    if not username:
+        return JSONResponse(status_code=400, content={'success': False, 'error': 'username wajib'})
+    result = restore_user(username)
+    if not result.get('success'):
+        return JSONResponse(status_code=400, content=result)
+    return JSONResponse(result)
 
 
 @app.post('/api/admin-room/change-master-password')
@@ -977,6 +1002,14 @@ async def api_review_report(request: Request, report_id: int = Form(...),
     user = require_auth(request)
     if not user or user['login_role'] not in ('mentor', 'owner'):
         return JSONResponse(status_code=403, content={'error': 'Unauthorized', 'success': False})
+
+    act = (action or '').strip().lower()
+    fb = (feedback or '').strip()
+    if act in ('reject', 'tolak', 'ditolak') and len(fb) < 3:
+        return JSONResponse(
+            status_code=400,
+            content={'success': False, 'error': 'Alasan penolakan wajib diisi (min 3 karakter)'},
+        )
     
     result = review_report(report_id, action, feedback)
     return result
@@ -1151,33 +1184,27 @@ async def api_brand_get():
 
 @app.post('/api/admin-room/brand')
 async def api_brand_set(request: Request):
-    """Admin Room: update app_name / logo_icon / logo_url. Requires admin room unlock or manager session."""
-    # Allow if admin-room cookie/token OR owner session
+    """Admin Room: update app_name / logo_icon / logo_url.
+    Auth: Admin Room cookie (staff_admin_room) OR Manager session OR master password in body.
+    """
     user = get_current_user(request)
     body = {}
     try:
         body = await request.json()
     except Exception:
-        form = await request.form()
-        body = dict(form)
+        try:
+            form = await request.form()
+            body = dict(form)
+        except Exception:
+            body = {}
     master = (body.get('master_password') or body.get('password') or '').strip()
-    ok = False
-    if user and user.get('login_role') == 'owner':
-        ok = True
-    elif master and verify_master_password(master):
-        ok = True
-    else:
-        # admin room token cookie
-        tok = request.cookies.get('admin_room_token') or request.headers.get('X-Admin-Token')
-        if tok:
-            from database import get_db as _gdb
-            conn = _gdb(); cur = conn.cursor()
-            cur.execute("SELECT value FROM app_settings WHERE key = 'admin_room_token'")
-            row = cur.fetchone(); conn.close()
-            if row and row['value'] == tok:
-                ok = True
+    ok = (
+        _admin_room_ok(request)
+        or (user and user.get('login_role') == 'owner')
+        or (bool(master) and verify_master_password(master))
+    )
     if not ok:
-        return JSONResponse(status_code=403, content={'success': False, 'error': 'Unauthorized'})
+        return JSONResponse(status_code=403, content={'success': False, 'error': 'Unauthorized — buka Admin Room dulu / login Manager'})
     result = set_brand_settings(
         app_name=body.get('app_name') if 'app_name' in body else None,
         logo_icon=body.get('logo_icon') if 'logo_icon' in body else None,
@@ -1206,17 +1233,45 @@ async def api_export_attendance(
     username: str = '',
     date_from: str = '',
     date_to: str = '',
-    format: str = 'csv',
+    format: str = 'auto',
 ):
-    if not _admin_room_ok(request):
+    user = get_current_user(request)
+    if not (_admin_room_ok(request) or (user and user.get('login_role') == 'owner')):
         return JSONResponse(status_code=401, content={'success': False, 'error': 'Unauthorized'})
+    fmt = (format or 'auto').lower().strip()
+    mode_l = (mode or 'daily').lower().strip()
+    if fmt in ('', 'auto'):
+        fmt = 'pdf' if mode_l == 'daily' else 'html'
+    brand = get_brand_settings()
+    app_name = brand.get('app_name') or 'Staff Management'
+
+    if mode_l == 'daily' and fmt == 'pdf':
+        pdf_res = attendance_daily_pdf_bytes(date=date or '', app_name=app_name)
+        if not pdf_res.get('success'):
+            return JSONResponse(status_code=400, content=pdf_res)
+        from fastapi.responses import Response
+        return Response(
+            content=pdf_res['pdf'],
+            media_type='application/pdf',
+            headers={'Content-Disposition': 'attachment; filename="%s"' % pdf_res['filename']},
+        )
+
+    if mode_l == 'staff' and fmt in ('html', 'calendar', 'screenshot'):
+        cal = attendance_staff_calendar_html(
+            username=username or '', date_from=date_from or '', date_to=date_to or '',
+            app_name=app_name,
+        )
+        if not cal.get('success'):
+            return JSONResponse(status_code=400, content=cal)
+        return HTMLResponse(content=cal['html'])
+
     result = export_attendance_rows(
         mode=mode, date=date or None, username=username or None,
         date_from=date_from or None, date_to=date_to or None,
     )
     if not result.get('success'):
         return JSONResponse(status_code=400, content=result)
-    if (format or 'csv').lower() == 'json':
+    if fmt == 'json':
         return JSONResponse(result)
     csv_text = attendance_rows_to_csv(result.get('rows') or [])
     meta = result.get('meta') or {}
@@ -1234,10 +1289,9 @@ async def api_export_attendance(
 
 @app.post('/api/admin-room/brand-logo')
 async def api_brand_logo_upload(request: Request, file: UploadFile = File(...)):
-    if not _admin_room_ok(request):
-        user = get_current_user(request)
-        if not (user and user.get('login_role') == 'owner'):
-            return JSONResponse(status_code=401, content={'success': False, 'error': 'Unauthorized'})
+    user = get_current_user(request)
+    if not (_admin_room_ok(request) or (user and user.get('login_role') == 'owner')):
+        return JSONResponse(status_code=403, content={'success': False, 'error': 'Unauthorized — buka Admin Room dulu / login Manager'})
     if not file or not file.filename:
         return JSONResponse(status_code=400, content={'success': False, 'error': 'file wajib'})
     name = (file.filename or '').lower()
@@ -1256,6 +1310,71 @@ async def api_brand_logo_upload(request: Request, file: UploadFile = File(...)):
     except Exception:
         pass
     return {'success': True, 'logo_url': url, 'brand': result.get('brand') or get_brand_settings()}
+
+
+
+
+@app.get('/api/manager/export-attendance')
+async def api_manager_export_attendance(
+    request: Request,
+    mode: str = 'daily',
+    date: str = '',
+    username: str = '',
+    date_from: str = '',
+    date_to: str = '',
+    format: str = 'auto',
+):
+    """Manager dashboard export — same as admin-room export, requires Manager session."""
+    user = require_auth(request)
+    if not user or user.get('login_role') != 'owner':
+        return JSONResponse(status_code=403, content={'success': False, 'error': 'Hanya Manager'})
+    fmt = (format or 'auto').lower().strip()
+    mode_l = (mode or 'daily').lower().strip()
+    if fmt in ('', 'auto'):
+        fmt = 'pdf' if mode_l == 'daily' else 'html'
+    brand = get_brand_settings()
+    app_name = brand.get('app_name') or 'Staff Management'
+
+    if mode_l == 'daily' and fmt == 'pdf':
+        pdf_res = attendance_daily_pdf_bytes(date=date or '', app_name=app_name)
+        if not pdf_res.get('success'):
+            return JSONResponse(status_code=400, content=pdf_res)
+        from fastapi.responses import Response
+        return Response(
+            content=pdf_res['pdf'],
+            media_type='application/pdf',
+            headers={'Content-Disposition': 'attachment; filename="%s"' % pdf_res['filename']},
+        )
+
+    if mode_l == 'staff' and fmt in ('html', 'calendar', 'screenshot'):
+        cal = attendance_staff_calendar_html(
+            username=username or '', date_from=date_from or '', date_to=date_to or '',
+            app_name=app_name,
+        )
+        if not cal.get('success'):
+            return JSONResponse(status_code=400, content=cal)
+        return HTMLResponse(content=cal['html'])
+
+    result = export_attendance_rows(
+        mode=mode, date=date or None, username=username or None,
+        date_from=date_from or None, date_to=date_to or None,
+    )
+    if not result.get('success'):
+        return JSONResponse(status_code=400, content=result)
+    if fmt == 'json':
+        return JSONResponse(result)
+    csv_text = attendance_rows_to_csv(result.get('rows') or [])
+    meta = result.get('meta') or {}
+    if meta.get('mode') == 'daily':
+        fname = 'kehadiran_harian_%s.csv' % meta.get('date', 'all')
+    else:
+        fname = 'kehadiran_%s_%s_%s.csv' % (meta.get('username', 'staff'), meta.get('date_from', ''), meta.get('date_to', ''))
+    from fastapi.responses import Response
+    return Response(
+        content=csv_text,
+        media_type='text/csv; charset=utf-8',
+        headers={'Content-Disposition': 'attachment; filename="%s"' % fname},
+    )
 
 
 if __name__ == '__main__':
