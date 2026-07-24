@@ -45,24 +45,20 @@
                            placeholder="Masukkan username">
                 </div>
 
-                <!-- Role: Karyawan / Atasan / Owner -->
+                <!-- Role: Staff / Manager (Atasan system via Manager) -->
                 <div class="mb-4">
                     <div class="flex gap-2 mb-3">
                         <button type="button" id="btn-role-pkl" class="role-btn flex-1 bg-gray-800 hover:bg-gray-700 text-white font-medium py-2.5 rounded-xl text-sm transition border border-gray-700"
                                 onclick="toggleRole('pkl')">
-                            <i class="fas fa-user-tie mr-1"></i>Karyawan
-                        </button>
-                        <button type="button" id="btn-role-mentor" class="role-btn flex-1 bg-gray-800 hover:bg-gray-700 text-white font-medium py-2.5 rounded-xl text-sm transition border border-gray-700"
-                                onclick="toggleRole('mentor')">
-                            <i class="fas fa-user-shield mr-1"></i>Atasan
+                            <i class="fas fa-user-tie mr-1"></i>Staff
                         </button>
                         <button type="button" id="btn-role-owner" class="role-btn flex-1 bg-gray-800 hover:bg-gray-700 text-amber-400 font-medium py-2.5 rounded-xl text-sm transition border border-amber-500/30"
                                 onclick="toggleRole('owner')">
-                            <i class="fas fa-crown mr-1"></i>Owner
+                            <i class="fas fa-user-shield mr-1"></i>Manager
                         </button>
                     </div>
 
-                    <!-- Karyawan password -->
+                    <!-- Staff password -->
                     <div id="pkl-password-section" class="hidden space-y-3">
                         <div>
                             <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Password</label>
@@ -73,26 +69,11 @@
                         </div>
                         <button type="button" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2.5 rounded-xl text-sm transition"
                                 onclick="submitLogin('PKL')">
-                            <i class="fas fa-sign-in-alt mr-2"></i>Masuk sebagai Karyawan
+                            <i class="fas fa-sign-in-alt mr-2"></i>Masuk sebagai Staff
                         </button>
                     </div>
 
-                    <!-- Atasan password -->
-                    <div id="mentor-password-section" class="hidden space-y-3">
-                        <div>
-                            <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Password</label>
-                            <input type="password" id="mentor-password"
-                                   class="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                                   placeholder="Masukkan password"
-                                   onkeydown="if(event.key==='Enter') submitLogin('MENTOR')">
-                        </div>
-                        <button type="button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2.5 rounded-xl text-sm transition"
-                                onclick="submitLogin('MENTOR')">
-                            <i class="fas fa-sign-in-alt mr-2"></i>Masuk sebagai Atasan
-                        </button>
-                    </div>
-
-                    <!-- Owner password (master) -->
+                    <!-- Manager password (master) — Atasan system stays via manage-staff -->
                     <div id="owner-password-section" class="hidden space-y-3">
                         <div>
                             <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Master Password</label>
@@ -103,10 +84,13 @@
                         </div>
                         <button type="button" class="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold py-2.5 rounded-xl text-sm transition"
                                 onclick="submitLogin('OWNER')">
-                            <i class="fas fa-sign-in-alt mr-2"></i>Masuk sebagai Owner
+                            <i class="fas fa-sign-in-alt mr-2"></i>Masuk sebagai Manager
                         </button>
-                        <p class="text-[11px] text-gray-500 text-center">Lihat semua staff · password = master Admin Room</p>
+                        <p class="text-[11px] text-gray-500 text-center">Pilih staff di header · password = master Admin Room</p>
                     </div>
+                    <!-- hidden mentor section kept for JS safety (not shown) -->
+                    <div id="mentor-password-section" class="hidden"></div>
+                    <input type="password" id="mentor-password" class="hidden" tabindex="-1" aria-hidden="true">
                 </div>
 
                 <!-- Baris 4: Buat Akun + Admin Room -->
@@ -172,7 +156,7 @@
 
     function toggleRole(role) {
         currentRole = role;
-        ['pkl-password-section', 'mentor-password-section', 'owner-password-section'].forEach(function (id) {
+        ['pkl-password-section', 'owner-password-section'].forEach(function (id) {
             var el = document.getElementById(id);
             if (el) el.classList.add('hidden');
         });

@@ -81,7 +81,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="space-y-8" data-login-role="{{ login_role }}" data-score="{{ score }}" data-user-id="{{ user.id }}">
+<div class="space-y-8" data-login-role="{{ login_role }}" data-score="{{ score }}" data-user-id="{{ user.id }}" data-manage-user="{{ manage_username or '' }}">
 
     <!-- ============== HEADER ============== -->
     <div class="flex items-center justify-between">
@@ -89,7 +89,7 @@
             <h1 class="dash-h1">
                 <span>{{ user.nama.split(',')[0] if ',' in user.nama else user.nama }}</span>
                 <span id="role-badge" class="inline-block px-3 py-1 rounded-full text-xs font-medium ml-3 align-middle {% if login_role in ['mentor', 'owner'] %}bg-[var(--accent-soft)] text-[var(--accent)]{% else %}bg-[var(--accent-soft)] text-[var(--accent)]{% endif %} role-badge" style="border: 1px solid var(--border-subtle);">
-                    {% if login_role == 'owner' %}OWNER{% elif login_role == 'mentor' %}ATASAN{% else %}KARYAWAN{% endif %}
+                    {% if login_role == 'owner' %}MANAGER{% elif login_role == 'mentor' %}MANAGER{% else %}STAFF{% endif %}
                 </span>
             </h1>
             <p class="dash-sub mt-2">
@@ -98,7 +98,7 @@
                 {% elif login_role == 'mentor' %}
                 Mode <span class="text-[var(--accent)] font-medium">Atasan</span> — mengelola data akun @{{ user.username }}
                 {% else %}
-                Mode <span class="text-[var(--accent)] font-medium">Karyawan</span> — semangat belajar, {{ user.nama }}!
+                Mode <span class="text-[var(--accent)] font-medium">Staff</span> — semoga produktif, {{ user.nama }}!
                 {% endif %}
             </p>
         </div>
@@ -229,26 +229,12 @@
         {% if login_role in ['mentor', 'owner'] %}
         <!-- MENTOR/OWNER: Input Absensi scoped to managed staff -->
         <div class="space-y-6">
-            {% if login_role == 'owner' %}
-            <div class="card p-4 max-w-xl mx-auto border border-amber-500/30">
-                <label class="text-[11px] uppercase tracking-wider text-amber-400/80 mb-1 block font-medium">Kelola karyawan</label>
-                <div class="flex gap-2">
-                    <select id="owner-manage-staff" class="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white"
-                            onchange="switchManageStaff(this.value)">
-                        <option value="">— Pilih karyawan dulu —</option>
-                        {% for u in staff_users %}
-                        <option value="{{ u.username }}" {% if manage_username == u.username %}selected{% endif %}>@{{ u.username }} — {{ u.nama }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <p class="text-[11px] text-gray-500 mt-2">Owner = Atasan, tapi pilih siapa yang di-manage (tanpa login ulang). Absensi, kalender, tugas = scope karyawan ini.</p>
+            {% if login_role == 'owner' and not manage_username %}
+            <div class="card p-8 max-w-xl mx-auto text-center text-gray-500 text-sm border border-amber-500/20">
+                <i class="fas fa-user-check text-3xl mb-3 opacity-40 text-amber-400"></i>
+                <p class="text-white font-medium mb-1">Pilih staff dulu</p>
+                <p>Gunakan dropdown <span class="text-amber-400">Staff</span> di header/navbar (kanan atas).</p>
             </div>
-            {% if not manage_username %}
-            <div class="card p-8 max-w-xl mx-auto text-center text-gray-500 text-sm">
-                <i class="fas fa-user-check text-3xl mb-3 opacity-40"></i>
-                <p>Pilih karyawan di atas dulu untuk input absensi / lihat kalender / kelola tugas.</p>
-            </div>
-            {% endif %}
             {% endif %}
 
             {% if login_role == 'mentor' or (login_role == 'owner' and manage_username) %}
@@ -531,7 +517,7 @@
             {% if login_role == 'owner' and not manage_username %}
             <div class="card p-8 text-center text-gray-500 text-sm">
                 <i class="fas fa-user-check text-3xl mb-3 opacity-40"></i>
-                <p>Pilih karyawan di tab Absensi dulu, baru kelola tugas.</p>
+                <p>Pilih staff di header dulu, baru kelola tugas.</p>
             </div>
             {% else %}
             <!-- Header + Buat Tugas Button -->
@@ -605,7 +591,7 @@
                     {% endfor %}
                     {% if not all_tasks %}
                     <div class="text-center text-gray-600 text-sm py-8">
-                        <i class="fas fa-clipboard text-3xl mb-2 opacity-30"></i><br>Belum ada tugas{% if login_role == 'owner' and not manage_username %} — pilih karyawan dulu{% endif %}
+                        <i class="fas fa-clipboard text-3xl mb-2 opacity-30"></i><br>Belum ada tugas{% if login_role == 'owner' and not manage_username %} — pilih staff dulu{% endif %}
                     </div>
                     {% endif %}
                 </div>
@@ -1976,10 +1962,18 @@ function refreshAllTasks() {
     // STEP 3: Save merged back
     localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
 
-    // STEP 4: Filter to current username only (1-to-1 pair)
+    // STEP 4: Filter tasks
+    // Staff: own username. Manager: managed staff (data-manage-user / header select).
+    const role = (document.body.dataset.loginRole || '').toLowerCase();
+    const manage = (document.body.dataset.manageUser || '').replace('@', '').toLowerCase();
     const userTasks = merged.filter(t => {
-        const student = (t.student || '').replace('@', '');
-        return student === username;
+        const student = (t.student || '').replace('@', '').toLowerCase();
+        if (role === 'owner') {
+            if (!manage) return false;
+            return student === manage;
+        }
+        // mentor (legacy) or staff: pair / self
+        return student === username.toLowerCase();
     });
 
     // STEP 5: Re-render (Karyawan & Mentor see SAME filtered data)

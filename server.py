@@ -255,7 +255,7 @@ async def login_page(request: Request):
     if user:
         return RedirectResponse(url='/dashboard', status_code=303)
     template = env.get_template('login.html')
-    content = template.render(request=request, user=None, login_role=None, error=None, success=None)
+    content = template.render(request=request, user=None, login_role=None, error=None, success=None, staff_users=[], manage_username=None)
     return HTMLResponse(content=content)
 
 @app.post('/login')
@@ -433,7 +433,7 @@ async def admin_room_page(request: Request):
     if not _admin_room_ok(request):
         return RedirectResponse(url='/login?admin=1', status_code=303)
     template = env.get_template('admin_room.html')
-    content = template.render(request=request, user=None, login_role=None, app_version=APP_VERSION)
+    content = template.render(request=request, user=None, login_role=None, app_version=APP_VERSION, staff_users=[], manage_username=None)
     return HTMLResponse(content=content)
 
 
