@@ -32,6 +32,22 @@ TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
 # Template environment
 env = Environment(loader=FileSystemLoader(TEMPLATES_DIR))
 
+def refresh_brand_globals():
+    try:
+        b = get_brand_settings()
+        env.globals['app_name'] = b['app_name']
+        env.globals['logo_icon'] = b['logo_icon']
+        env.globals['logo_url'] = b['logo_url']
+        env.globals['brand'] = b
+    except Exception:
+        env.globals['app_name'] = 'Staff Management'
+        env.globals['logo_icon'] = 'fa-briefcase'
+        env.globals['logo_url'] = ''
+        env.globals['brand'] = {'app_name': 'Staff Management', 'logo_icon': 'fa-briefcase', 'logo_url': ''}
+
+# brand helpers imported later — refresh after DB ready
+
+
 app = FastAPI(title="Staff Management")
 UPLOADS_DIR = os.path.join(BASE_DIR, 'data', 'uploads')
 os.makedirs(UPLOADS_DIR, exist_ok=True)
@@ -87,9 +103,36 @@ from database import (
     verify_master_password, set_master_password, get_master_password,
     list_users_admin, reset_user_password, delete_user_cascade,
     ensure_master_password_seed, ensure_owner_user,
+    get_brand_settings, set_brand_settings, get_setting, set_setting,
 )
 
+try:
+    refresh_brand_globals()
+except Exception:
+    pass
+
 # ============ HELPERS ============
+
+def brand_ctx():
+    """Template context for editable brand (defaults = current product)."""
+    b = get_brand_settings()
+    return {
+        'app_name': b['app_name'],
+        'logo_icon': b['logo_icon'],
+        'logo_url': b['logo_url'],
+        'brand': b,
+    }
+
+def render_template(name: str, **ctx):
+    """Jinja render with brand defaults always present."""
+    base = brand_ctx()
+    base.update(ctx)
+    if 'staff_users' not in base:
+        base['staff_users'] = []
+    if 'manage_username' not in base:
+        base['manage_username'] = None
+    template = env.get_template(name)
+    return template.render(**base)
 
 def get_wib_time():
     """Returns current time in WIB (UTC+7)"""
@@ -254,8 +297,7 @@ async def login_page(request: Request):
     user = get_current_user(request)
     if user:
         return RedirectResponse(url='/dashboard', status_code=303)
-    template = env.get_template('login.html')
-    content = template.render(request=request, user=None, login_role=None, error=None, success=None, staff_users=[], manage_username=None)
+    content = render_template('login.html', request=request, user=None, login_role=None, error=None, success=None)
     return HTMLResponse(content=content)
 
 @app.post('/login')
@@ -432,8 +474,7 @@ async def api_admin_room_unlock(request: Request):
 async def admin_room_page(request: Request):
     if not _admin_room_ok(request):
         return RedirectResponse(url='/login?admin=1', status_code=303)
-    template = env.get_template('admin_room.html')
-    content = template.render(request=request, user=None, login_role=None, app_version=APP_VERSION, staff_users=[], manage_username=None)
+    content = render_template('admin_room.html',request=request, user=None, login_role=None, app_version=APP_VERSION, staff_users=[], manage_username=None)
     return HTMLResponse(content=content)
 
 
@@ -659,8 +700,8 @@ async def dashboard(request: Request):
     current_date = now_wib.strftime('%A, %d %B %Y')
     current_time = now_wib.strftime('%H:%M:%S')
     
-    template = env.get_template('dashboard.html')
-    content = template.render(
+    content = render_template(
+        'dashboard.html',
         request=request,
         user=user,
         login_role=login_role,
@@ -679,6 +720,7 @@ async def dashboard(request: Request):
         all_attendance_for_calendar=cal_att or all_attendance or recent_attendance or [],
         manage_username=manage_username,
         manage_user=manage_user,
+        score=stats.get('score', 100) if isinstance(stats, dict) else 100,
     )
     resp = HTMLResponse(content=content)
     if login_role == 'owner':
@@ -848,8 +890,7 @@ async def tugas_detail(request: Request, task_id: int):
     current_date = now_wib.strftime('%A, %d %B %Y')
     current_time = now_wib.strftime('%H:%M:%S')
     
-    template = env.get_template('tugas_detail.html')
-    content = template.render(
+    content = render_template('tugas_detail.html', 
         request=request,
         user=user,
         login_role=login_role,
@@ -895,8 +936,7 @@ async def lapor_page(request: Request, task_id: int):
     now_wib = get_wib_time()
     current_date = now_wib.strftime('%A, %d %B %Y')
     
-    template = env.get_template('lapor.html')
-    content = template.render(
+    content = render_template('lapor.html', 
         request=request,
         user=user,
         login_role=login_role,
@@ -1086,6 +1126,59 @@ async def api_me(request: Request):
     if not user:
         return {'error': 'Not authenticated'}
     return user
+
+
+
+@app.get('/api/brand')
+async def api_brand_get():
+    return {'success': True, **get_brand_settings()}
+
+
+@app.post('/api/admin-room/brand')
+async def api_brand_set(request: Request):
+    """Admin Room: update app_name / logo_icon / logo_url. Requires admin room unlock or manager session."""
+    # Allow if admin-room cookie/token OR owner session
+    user = get_current_user(request)
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        form = await request.form()
+        body = dict(form)
+    master = (body.get('master_password') or body.get('password') or '').strip()
+    ok = False
+    if user and user.get('login_role') == 'owner':
+        ok = True
+    elif master and verify_master_password(master):
+        ok = True
+    else:
+        # admin room token cookie
+        tok = request.cookies.get('admin_room_token') or request.headers.get('X-Admin-Token')
+        if tok:
+            from database import get_db as _gdb
+            conn = _gdb(); cur = conn.cursor()
+            cur.execute("SELECT value FROM app_settings WHERE key = 'admin_room_token'")
+            row = cur.fetchone(); conn.close()
+            if row and row['value'] == tok:
+                ok = True
+    if not ok:
+        return JSONResponse(status_code=403, content={'success': False, 'error': 'Unauthorized'})
+    result = set_brand_settings(
+        app_name=body.get('app_name') if 'app_name' in body else None,
+        logo_icon=body.get('logo_icon') if 'logo_icon' in body else None,
+        logo_url=body.get('logo_url') if 'logo_url' in body else None,
+    )
+    if not result.get('success'):
+        return JSONResponse(status_code=400, content=result)
+    try:
+        b = result['brand']
+        env.globals['app_name'] = b['app_name']
+        env.globals['logo_icon'] = b['logo_icon']
+        env.globals['logo_url'] = b['logo_url']
+        env.globals['brand'] = b
+    except Exception:
+        pass
+    return result
 
 
 if __name__ == '__main__':

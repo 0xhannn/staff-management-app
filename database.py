@@ -1037,11 +1037,26 @@ def ensure_master_password_seed():
 
 
 def ensure_owner_user() -> dict:
-    """System account for Owner sessions (login via master password only)."""
+    """System account for Manager sessions (login via master password only).
+    Username stays 'owner' (internal); display name is Manager.
+    """
     existing = get_user_by_username('owner')
     if existing:
+        if (existing.get('nama') or '').strip() in ('Owner', 'owner', ''):
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("UPDATE users SET nama = ? WHERE username = 'owner'", ('Manager',))
+            conn.commit()
+            conn.close()
+            existing = get_user_by_username('owner')
         return existing
-    return create_user('owner', '123')
+    u = create_user('owner', '123')
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET nama = ? WHERE username = 'owner'", ('Manager',))
+    conn.commit()
+    conn.close()
+    return get_user_by_username('owner') or u
 
 def get_master_password() -> str:
     ensure_master_password_seed()
@@ -1075,6 +1090,83 @@ def set_master_password(new_password: str) -> bool:
     conn.commit()
     conn.close()
     return True
+
+
+
+
+DEFAULT_APP_NAME = 'Staff Management'
+DEFAULT_LOGO_ICON = 'fa-briefcase'  # Font Awesome class (no "fas")
+DEFAULT_LOGO_URL = ''  # optional image URL; empty = use icon default
+
+
+def get_setting(key: str, default: str = '') -> str:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS app_settings ("
+        "key TEXT PRIMARY KEY, value TEXT NOT NULL, "
+        "updated_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+    )
+    cur.execute("SELECT value FROM app_settings WHERE key = ?", (key,))
+    row = cur.fetchone()
+    conn.close()
+    if not row or row['value'] is None:
+        return default
+    return str(row['value'])
+
+
+def set_setting(key: str, value: str) -> bool:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS app_settings ("
+        "key TEXT PRIMARY KEY, value TEXT NOT NULL, "
+        "updated_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+    )
+    cur.execute(
+        "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP",
+        (key, value if value is not None else ''),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def get_brand_settings() -> dict:
+    """Editable brand: app_name + logo (icon class or image URL). Defaults = current product brand."""
+    app_name = (get_setting('app_name', DEFAULT_APP_NAME) or DEFAULT_APP_NAME).strip()
+    logo_icon = (get_setting('logo_icon', DEFAULT_LOGO_ICON) or DEFAULT_LOGO_ICON).strip()
+    logo_url = (get_setting('logo_url', DEFAULT_LOGO_URL) or '').strip()
+    if logo_icon.startswith('fas '):
+        logo_icon = logo_icon.replace('fas ', '', 1).strip()
+    if not logo_icon:
+        logo_icon = DEFAULT_LOGO_ICON
+    return {
+        'app_name': app_name,
+        'logo_icon': logo_icon,
+        'logo_url': logo_url,
+    }
+
+
+def set_brand_settings(app_name: str = None, logo_icon: str = None, logo_url: str = None) -> dict:
+    if app_name is not None:
+        name = (app_name or '').strip() or DEFAULT_APP_NAME
+        if len(name) > 64:
+            name = name[:64]
+        set_setting('app_name', name)
+    if logo_icon is not None:
+        icon = (logo_icon or '').strip() or DEFAULT_LOGO_ICON
+        if icon.startswith('fas '):
+            icon = icon.replace('fas ', '', 1).strip()
+        set_setting('logo_icon', icon or DEFAULT_LOGO_ICON)
+    if logo_url is not None:
+        url = (logo_url or '').strip()
+        # allow empty (reset to icon), http(s), or /uploads/...
+        if url and not (url.startswith('http://') or url.startswith('https://') or url.startswith('/')):
+            return {'success': False, 'error': 'Logo URL harus http(s) atau path /uploads/...'}
+        set_setting('logo_url', url)
+    return {'success': True, 'brand': get_brand_settings()}
 
 
 def list_users_admin():

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Staff Management{% endblock %}</title>
+    <title>{% block title %}{{ app_name|default('Staff Management') }}{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -40,7 +40,7 @@
             --radius-card: 12px;
             --radius-btn: 8px;
         }
-        /* Karyawan mode — emerald accent */
+        /* Staff mode — emerald accent */
         html[data-role="owner"] {
             --accent: #F59E0B;
             --accent-rgb: 245, 158, 11;
@@ -76,11 +76,15 @@
         <div class="max-w-5xl mx-auto px-4">
             <div class="flex items-center justify-between h-14">
                 <!-- Logo -->
-                <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-briefcase text-white text-sm"></i>
+                <div class="flex items-center gap-3 min-w-0">
+                    {% if logo_url|default('') %}
+                    <img src="{{ logo_url }}" alt="logo" class="w-8 h-8 rounded-lg object-cover bg-gray-800 flex-shrink-0">
+                    {% else %}
+                    <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fas {{ logo_icon|default('fa-briefcase') }} text-white text-sm"></i>
                     </div>
-                    <span class="font-bold text-white tracking-tight">Staff Management</span>
+                    {% endif %}
+                    <span class="font-bold text-white tracking-tight truncate">{{ app_name|default('Staff Management') }}</span>
                     {% if login_role == 'mentor' %}
                     <span class="text-[10px] px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full border border-blue-500/30 uppercase tracking-wider font-bold">MANAGER</span>
                     {% elif login_role == 'pkl' %}
@@ -122,7 +126,7 @@
                     </div>
                     {% endif %}
                     <div class="text-right hidden sm:block">
-                        <div class="text-sm font-medium text-white">{{ user.nama }}</div>
+                        <div class="text-sm font-medium text-white">{% if login_role == 'owner' %}Manager{% else %}{{ user.nama }}{% endif %}</div>
                         <div class="text-[10px] text-gray-500">{% if login_role == 'owner' %}Manager{% elif login_role == 'pkl' %}Staff{% else %}@{{ user.username }}{% endif %}</div>
                     </div>
                     <a href="/logout" class="w-8 h-8 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-400 hover:text-white hover:border-gray-500 transition" title="Logout">
@@ -159,8 +163,17 @@
 
 <script>
 function switchManageStaff(username) {
-  if (!username) { window.location.href = '/dashboard?manage='; return; }
-  window.location.href = '/dashboard?manage=' + encodeURIComponent(username);
+  // Stay on current tab (home/absensi/tugas) after reload
+  var hash = (location.hash || '').replace(/^#/, '');
+  if (!hash || hash === 'home') {
+    // also detect active tab from DOM
+    var active = document.querySelector('.nav-tab.tab-active, .nav-tab.active, [data-tab].tab-active');
+    if (active && active.getAttribute('data-tab')) hash = active.getAttribute('data-tab');
+  }
+  if (hash === 'home') hash = '';
+  var q = username ? ('manage=' + encodeURIComponent(username)) : 'manage=';
+  var url = '/dashboard?' + q + (hash ? ('#' + hash) : '');
+  window.location.href = url;
 }
 </script>
 </body>

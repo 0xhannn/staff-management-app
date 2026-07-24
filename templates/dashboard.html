@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — Staff Management{% endblock %}
+{% block title %}Dashboard — {{ app_name|default('Staff Management') }}{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -87,16 +87,16 @@
     <div class="flex items-center justify-between">
         <div>
             <h1 class="dash-h1">
-                <span>{{ user.nama.split(',')[0] if ',' in user.nama else user.nama }}</span>
+                <span>{% if login_role == 'owner' %}Manager{% else %}{{ user.nama.split(',')[0] if ',' in user.nama else user.nama }}{% endif %}</span>
                 <span id="role-badge" class="inline-block px-3 py-1 rounded-full text-xs font-medium ml-3 align-middle {% if login_role in ['mentor', 'owner'] %}bg-[var(--accent-soft)] text-[var(--accent)]{% else %}bg-[var(--accent-soft)] text-[var(--accent)]{% endif %} role-badge" style="border: 1px solid var(--border-subtle);">
                     {% if login_role == 'owner' %}MANAGER{% elif login_role == 'mentor' %}MANAGER{% else %}STAFF{% endif %}
                 </span>
             </h1>
             <p class="dash-sub mt-2">
                 {% if login_role == 'owner' %}
-                Mode <span class="text-[var(--accent)] font-medium">Owner</span> — pantau semua staff · filter · assign task
+                Mode <span class="text-[var(--accent)] font-medium">Manager</span>{% if manage_username %} — kelola @{{ manage_username }}{% else %} — pilih staff di header dulu{% endif %}
                 {% elif login_role == 'mentor' %}
-                Mode <span class="text-[var(--accent)] font-medium">Atasan</span> — mengelola data akun @{{ user.username }}
+                Mode <span class="text-[var(--accent)] font-medium">Manager</span> — mengelola data akun @{{ user.username }}
                 {% else %}
                 Mode <span class="text-[var(--accent)] font-medium">Staff</span> — semoga produktif, {{ user.nama }}!
                 {% endif %}
@@ -112,10 +112,10 @@
                 </button>
                 <div id="profile-menu" class="hidden absolute right-0 top-14 w-56 card shadow-2xl z-50 overflow-hidden" style="background: var(--bg-card);">
                     <div class="px-4 py-3 border-b" style="border-color: var(--border-subtle);">
-                        <div class="font-semibold text-white text-base">{{ user.nama }}</div>
-                        <div class="text-xs text-[var(--text-tertiary)] mt-0.5">@{{ user.username }}</div>
+                        <div class="font-semibold text-white text-base">{% if login_role == 'owner' %}Manager{% else %}{{ user.nama }}{% endif %}</div>
+                        <div class="text-xs text-[var(--text-tertiary)] mt-0.5">{% if login_role == 'owner' %}@manager{% else %}@{{ user.username }}{% endif %}</div>
                         <div class="text-xs mt-1.5 font-medium text-[var(--accent)]">
-                            {{ login_role|upper }}
+                            {% if login_role == 'owner' %}MANAGER{% elif login_role == 'pkl' %}STAFF{% else %}{{ login_role|upper }}{% endif %}
                         </div>
                     </div>
                     <a href="#" onclick="showChangePasswordModal(); return false;" class="block px-4 py-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--accent-soft)] hover:text-white transition">
@@ -131,9 +131,16 @@
 
     <!-- ============== TAB: HOME (Stat Cards + Log) ============== -->
     <div data-tab-content="home" class="tab-content active">
+        {% if login_role == 'owner' and not manage_username %}
+        <div class="card p-10 text-center border border-amber-500/20 max-w-lg mx-auto mt-6">
+            <i class="fas fa-user-check text-4xl mb-4 text-amber-400/50"></i>
+            <p class="text-white font-semibold text-lg mb-1">Pilih staff dulu</p>
+            <p class="text-gray-500 text-sm">Gunakan dropdown <span class="text-amber-400">Staff</span> di header (kanan atas) untuk mulai kelola absensi, tugas, dan ringkasan.</p>
+        </div>
+        {% else %}
         <!-- Section label -->
         <div class="section-label mb-4">
-            <i class="fas fa-chart-line mr-2"></i>Ringkasan
+            <i class="fas fa-chart-line mr-2"></i>Ringkasan{% if login_role == 'owner' and manage_username %} · @{{ manage_username }}{% endif %}
         </div>
 
         <!-- Stat Cards (5 total: 4 existing + Skor Kepatuhan) -->
@@ -222,12 +229,13 @@
                 </div>
             </div>
         </div>
+        {% endif %}{# manager home gate #}
     </div>
 
     <!-- ============== TAB: ABSENSI ============== -->
     <div data-tab-content="absensi" class="tab-content">
         {% if login_role in ['mentor', 'owner'] %}
-        <!-- MENTOR/OWNER: Input Absensi scoped to managed staff -->
+        <!-- MANAGER: Input Absensi scoped to managed staff -->
         <div class="space-y-6">
             {% if login_role == 'owner' and not manage_username %}
             <div class="card p-8 max-w-xl mx-auto text-center text-gray-500 text-sm border border-amber-500/20">
@@ -408,9 +416,9 @@
             {% endif %}{# mentor or owner+manage #}
         </div>
         {% else %}
-        <!-- Karyawan: Attendance Controls + Calendar + Riwayat Kehadiran -->
+        <!-- Staff: Attendance Controls + Calendar + Riwayat Kehadiran -->
         <div class="space-y-6">
-            <!-- Karyawan: Attendance Controls -->
+            <!-- Staff: Attendance Controls -->
             <div class="card p-5 max-w-xl mx-auto">
                 <h2 class="text-lg font-semibold text-white mb-1">
                     <i class="fas fa-camera text-emerald-400 mr-2"></i>Presensi Mandiri
@@ -418,7 +426,7 @@
                 <p class="text-sm text-gray-500 mb-4">Ambil foto lokasi untuk Clock In/Out</p>
                 
                 <div class="flex justify-center">
-                    <button id="btn-pkl-attendance" onclick="handleKaryawanAttendance()" 
+                    <button id="btn-pkl-attendance" onclick="handleStaffAttendance()" 
                             data-today='{% if today_att %}{{ today_att|tojson }}{% else %}null{% endif %}'
                             class="border-2 border-emerald-500 text-emerald-400 hover:bg-emerald-500 hover:text-white px-8 py-3 rounded-xl text-sm font-bold transition-all duration-300 uppercase tracking-wider">
                         <i class="fas fa-clock mr-2"></i><span id="pkl-att-text">Loading...</span>
@@ -426,7 +434,7 @@
                 </div>
             </div>
 
-            <!-- Calendar Widget (Karyawan view) -->
+            <!-- Calendar Widget (Staff view) -->
             <div class="card p-5">
                 <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
                     <i class="fas fa-calendar mr-2 text-amber-400"></i>Kalender Presensi
@@ -512,7 +520,7 @@
     <!-- ============== TAB: TUGAS ============== -->
     <div data-tab-content="tugas" class="tab-content">
         {% if login_role in ['mentor', 'owner'] %}
-        <!-- MENTOR/OWNER: Task List scoped -->
+        <!-- MANAGER: Task List scoped -->
         <div class="space-y-6">
             {% if login_role == 'owner' and not manage_username %}
             <div class="card p-8 text-center text-gray-500 text-sm">
@@ -599,7 +607,7 @@
             {% endif %}{# owner manage gate #}
         </div>
         {% else %}
-        <!-- Karyawan: Task List + Modal Laporkan Tugas + Modal Buka Tugas -->
+        <!-- Staff: Task List + Modal Laporkan Tugas + Modal Buka Tugas -->
         <div class="space-y-6">
             <!-- Header (no global Laporkan button — moved into each card) -->
             <div>
@@ -609,7 +617,7 @@
                 <p class="text-sm text-gray-500 mt-0.5">Klik "Laporkan" di card tugas untuk submit laporan</p>
             </div>
             
-            <!-- Task List (Karyawan) -->
+            <!-- Task List (Staff) -->
             <div class="card p-5">
                 <div class="space-y-3 max-h-[60vh] overflow-y-auto" id="pkl-task-list">
                     {% for t in my_reports %}
@@ -690,7 +698,7 @@
         <div class="p-5 space-y-4">
             <div>
                 <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Judul Tugas *</label>
-                <input type="text" id="new-task-title" class="form-input w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500" placeholder="Contoh: Laporan Mingguan Karyawan">
+                <input type="text" id="new-task-title" class="form-input w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500" placeholder="Contoh: Laporan Mingguan Staff">
             </div>
             <div>
                 <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Deskripsi</label>
@@ -711,7 +719,7 @@
                 <input type="file" id="new-task-file" class="hidden" onchange="document.getElementById('new-task-file-label').textContent = this.files[0]?.name || 'Klik untuk pilih file'">
             </div>
             <div>
-                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Assign ke Karyawan *</label>
+                <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Assign ke Staff *</label>
                 {% if login_role == 'owner' %}
                 <select id="new-assign-to" class="form-input w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500">
                     {% for u in staff_users %}
@@ -732,7 +740,7 @@
     </div>
 </div>
 
-<!-- Modal: Laporkan Tugas (Karyawan) -->
+<!-- Modal: Laporkan Tugas (Staff) -->
 <div id="modal-laporan" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg shadow-2xl">
         <div class="p-5 border-b border-gray-800 flex items-center justify-between">
@@ -784,7 +792,7 @@
     </div>
 </div>
 
-<!-- Modal: Absensi Karyawan (Camera Capture) -->
+<!-- Modal: Absensi Staff (Camera Capture) -->
 <div id="modal-absensi-pkl" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
     <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
         <div class="p-5 border-b border-gray-800 flex items-center justify-between">
@@ -1093,12 +1101,12 @@ async function confirmAttendance() {
     }
 }
 
-// ========== Karyawan ATTENDANCE (Single Button) ==========
+// ========== Staff ATTENDANCE (Single Button) ==========
 let todayAttClockIn = null;
 let todayAttClockOut = null;
 let todayAttStatus = null;
 
-function initKaryawanAttendance() {
+function initStaffAttendance() {
     const btn = document.getElementById('btn-pkl-attendance');
     const text = document.getElementById('pkl-att-text');
     if (!btn || !text) return;
@@ -1114,10 +1122,10 @@ function initKaryawanAttendance() {
         } catch(e) {}
     }
     
-    updateKaryawanButton();
+    updateStaffButton();
 }
 
-function updateKaryawanButton() {
+function updateStaffButton() {
     const btn = document.getElementById('btn-pkl-attendance');
     const text = document.getElementById('pkl-att-text');
     if (!btn || !text) return;
@@ -1141,7 +1149,7 @@ function updateKaryawanButton() {
     }
 }
 
-async function handleKaryawanAttendance() {
+async function handleStaffAttendance() {
     if (todayAttClockIn && !todayAttClockOut) {
         // Clock Out - just confirm, no photo
         if (!confirm('Yakin ingin Clock Out?')) return;
@@ -1174,18 +1182,21 @@ async function handleKaryawanAttendance() {
 }
 
 
-// ========== Owner: switch managed staff (reload scoped dashboard) ==========
+// ========== Manager: switch managed staff (reload scoped dashboard) ==========
 function switchManageStaff(username) {
-    if (!username) {
-        window.location.href = '/dashboard?manage=';
-        return;
+    var hash = (location.hash || '').replace(/^#/, '');
+    if (!hash) {
+        var active = document.querySelector('.nav-tab.tab-active, [data-tab].tab-active, .tab-content.active');
+        if (active) hash = active.getAttribute('data-tab') || active.getAttribute('data-tab-content') || '';
     }
-    window.location.href = '/dashboard?manage=' + encodeURIComponent(username);
+    if (hash === 'home') hash = '';
+    var q = username ? ('manage=' + encodeURIComponent(username)) : 'manage=';
+    window.location.href = '/dashboard?' + q + (hash ? ('#' + hash) : '');
 }
 
 // Clock In / Clock Out (Mentor Mode - No Photo)
 function markAttendance(action) {
-    // Mentor/Owner: no camera. Route clock_in → /api/attendance, clock_out → /api/clock-out
+    // Manager: no camera. Route clock_in → /api/attendance, clock_out → /api/clock-out
     const endpoint = action === 'clock_out' ? '/api/clock-out' : '/api/attendance';
     const formData = new FormData();
     const tgt = document.getElementById('owner-target-staff');
@@ -1596,7 +1607,7 @@ function showToast(message, type = 'success') {
 
 // ========== REAL-TIME TASK CARD STATUS UPDATE (no page reload) ==========
 function updateTaskCardStatus(taskId, status) {
-    // Find ALL task card elements across both tabs (Mentor & Karyawan)
+    // Find ALL task card elements across both tabs (Mentor & Staff)
     document.querySelectorAll(`[data-task-id="${taskId}"]`).forEach(card => {
         // Find badge inside this card
         const badge = card.querySelector('.task-status-badge') ||
@@ -1617,7 +1628,7 @@ function updateTaskCardStatus(taskId, status) {
     });
 }
 
-// ========== SUBMIT REPORT (Modal - Karyawan) ==========
+// ========== SUBMIT REPORT (Modal - Staff) ==========
 let pendingFile = null;
 
 document.getElementById('lap-file-upload')?.addEventListener('change', function(e) {
@@ -1750,7 +1761,7 @@ async function batalkanLaporanModal() {
         if (task.reportId) {
             await fetch(`/api/cancel-report/${task.reportId}`, { method: 'POST' });
         }
-    } catch (e) { /* silent; Karyawan can re-submit anyway */ }
+    } catch (e) { /* silent; Staff can re-submit anyway */ }
 
     // 4) Close modal + show success toast
     closeModal('modal-laporan');
@@ -1926,7 +1937,7 @@ const SERVER_FIELDS = ['id', 'title', 'description', 'deadline', 'student', 'men
 //   2. Merge with localStorage (keep client fields per task ID)
 //   3. Save back to localStorage
 //   4. Filter tasks for current username only
-//   5. Re-render all cards (same data for Karyawan & Mentor)
+//   5. Re-render all cards (same data for Staff & Mentor)
 // ═══════════════════════════════════════════════════════════════════
 function refreshAllTasks() {
     const user     = getCurrentUser();
@@ -1976,12 +1987,12 @@ function refreshAllTasks() {
         return student === username.toLowerCase();
     });
 
-    // STEP 5: Re-render (Karyawan & Mentor see SAME filtered data)
+    // STEP 5: Re-render (Staff & Mentor see SAME filtered data)
     renderAllTaskCardsFiltered(userTasks, user);
     return userTasks.length;
 }
 
-// ═══ Render with pre-filtered task list (same data for Karyawan & Mentor) ═══
+// ═══ Render with pre-filtered task list (same data for Staff & Mentor) ═══
 function renderAllTaskCardsFiltered(userTasks, user) {
     const totalCount   = userTasks.length;
     const pendingCount = userTasks.filter(t => t.status === 'Belum Upload').length;
@@ -1992,7 +2003,7 @@ function renderAllTaskCardsFiltered(userTasks, user) {
     const mentorTitle = document.querySelector('#mentor-task-list')?.closest('.space-y-6')?.querySelector('h2, h3, .text-xl');
     if (mentorTitle) mentorTitle.textContent = '📋 Daftar Tugas (' + totalCount + ')';
 
-    // Update Karyawan counter
+    // Update Staff counter
     const pklTitle = document.querySelector('#pkl-task-list')?.closest('.space-y-6')?.querySelector('h2, h3, .text-xl');
     if (pklTitle) pklTitle.textContent = '📋 Tugas Saya (' + totalCount + ')';
 
@@ -2070,7 +2081,7 @@ function saveTasks(tasks) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
 }
 
-// ═══ getTasksForCurrentUser — NO role filter (Mentor & Karyawan see SAME tasks) ═══
+// ═══ getTasksForCurrentUser — NO role filter (Mentor & Staff see SAME tasks) ═══
 function getTasksForCurrentUser() {
     return loadRawTasks();
 }
@@ -2099,7 +2110,7 @@ function removeTask(id) {
     saveTasks(tasks.filter(t => String(t.id) !== String(id)));
 }
 
-// ═══ Render — rebuild card list (Mentor & Karyawan see SAME tasks) ═══
+// ═══ Render — rebuild card list (Mentor & Staff see SAME tasks) ═══
 function renderAllTaskCards() {
     // Load all tasks for current user (filtered by username — 1-to-1 pair)
     const allTasks = loadRawTasks();
@@ -2122,7 +2133,7 @@ function renderAllTaskCards() {
     const mentorTitle = document.querySelector('#mentor-task-list')?.closest('.space-y-6')?.querySelector('h2, h3, .text-xl');
     if (mentorTitle) mentorTitle.textContent = '📋 Daftar Tugas (' + totalCount + ')';
 
-    // Karyawan counter
+    // Staff counter
     const pklTitle = document.querySelector('#pkl-task-list')?.closest('.space-y-6')?.querySelector('h2, h3, .text-xl');
     if (pklTitle) pklTitle.textContent = '📋 Tugas Saya (' + totalCount + ')';
 
@@ -2155,7 +2166,7 @@ function renderAllTaskCards() {
     return tasks.length;
 }
 
-// ═══ Build card HTML (shared between Karyawan & Mentor) ═══
+// ═══ Build card HTML (shared between Staff & Mentor) ═══
 function buildTaskCardHtml(task, user, freshStatus, freshFileUrl, freshCatatan, freshFeedback, freshReportId) {
     const statusMap = {
         'Belum Upload':    { text: 'Belum Upload',    cls: 'bg-gray-700/50 text-gray-500' },
@@ -2171,7 +2182,7 @@ function buildTaskCardHtml(task, user, freshStatus, freshFileUrl, freshCatatan, 
 
     let actionBtn = '';
         if (user.role === 'pkl') {
-            // Karyawan mode: only show Buka button
+            // Staff mode: only show Buka button
             actionBtn = '<button onclick="window.location.href=\'/tugas/' + task.id + '\'" class="flex-shrink-0 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg transition"><i class="fas fa-external-link-alt mr-1"></i>Buka</button>';
         } else {
         // Mentor mode
@@ -2182,15 +2193,15 @@ function buildTaskCardHtml(task, user, freshStatus, freshFileUrl, freshCatatan, 
         actionBtn = reviewBtn + ' <button onclick="window.location.href=\'/tugas/' + task.id + '\'" class="flex-shrink-0 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg transition"><i class="fas fa-external-link-alt mr-1"></i>Buka</button>';
     }
 
-    const isKaryawan = user.role === 'pkl';
-    const idColor = isKaryawan ? 'text-emerald-400' : 'text-blue-400';
-    const idBg = isKaryawan ? 'bg-emerald-500/20' : 'bg-blue-500/20';
+    const isStaff = user.role === 'pkl';
+    const idColor = isStaff ? 'text-emerald-400' : 'text-blue-400';
+    const idBg = isStaff ? 'bg-emerald-500/20' : 'bg-blue-500/20';
     const currUsername = (user.username || '').replace('@', '');
-    const userBadge = isKaryawan 
+    const userBadge = isStaff 
         ? '<span class="text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full"><i class="fas fa-user mr-0.5"></i>@' + currUsername + '</span>'
         : '<span class="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full"><i class="fas fa-user mr-0.5"></i>@' + (task.student || 'student') + '</span>';
 
-    return '<div class="flex items-center gap-3 p-4 rounded-xl bg-gray-900/60 border border-gray-800 hover:border-' + (isKaryawan ? 'emerald' : 'blue') + '-500/30 transition" ' +
+    return '<div class="flex items-center gap-3 p-4 rounded-xl bg-gray-900/60 border border-gray-800 hover:border-' + (isStaff ? 'emerald' : 'blue') + '-500/30 transition" ' +
         'data-task-id="' + task.id + '" ' +
         'data-task-status="' + freshStatus + '" ' +
         'data-task-file-url="' + freshFileUrl + '" ' +
@@ -2315,7 +2326,7 @@ function openBukaTugas(taskId, title, description, deadline, reportId, reportSta
         
         html += `
             <div class="bg-gray-950 rounded-xl p-4">
-                <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Laporan Karyawan</div>
+                <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">Laporan Staff</div>
                 ${currentStatus ? '<div class="text-xs px-2 py-1 rounded-lg inline-block mb-2 ' + statusClass + '">' + currentStatus + '</div>' : ''}
                 ${currentReportFileUrl ? '<div class="mb-2"><a href="' + currentReportFileUrl + '" target="_blank" class="text-sm text-blue-400 hover:text-blue-300 underline"><i class="fas fa-external-link-alt mr-1"></i>Buka/Download File</a></div>' : ''}
                 ${currentCatatan ? '<div class="text-xs text-gray-400"><i class="fas fa-comment mr-1 text-emerald-400"></i>' + currentCatatan + '</div>' : ''}
@@ -2337,7 +2348,7 @@ function openBukaTugas(taskId, title, description, deadline, reportId, reportSta
             <div id="review-status" class="text-xs text-center"></div>`;
         }
     } else {
-        // Belum ada laporan — show "Laporkan Tugas" button for Karyawan
+        // Belum ada laporan — show "Laporkan Tugas" button for Staff
         const isPkl = (loginRole === 'pkl');
         html += `
             <div class="bg-gray-950 rounded-xl p-4 text-center">
@@ -2432,7 +2443,7 @@ function reviewReport(reportId, action, currentFeedback) {
                 '<span class="text-emerald-400"><i class="fas fa-check-circle mr-1"></i>Status: ' + data.status + '</span>';
             document.getElementById('review-buttons')?.remove();
 
-            const label = data.status === 'Diterima' ? 'Tugas diterima! Terima kasih.' : 'Tugas ditolak. Anak Karyawan bisa upload ulang.';
+            const label = data.status === 'Diterima' ? 'Tugas diterima! Terima kasih.' : 'Tugas ditolak. Staff bisa upload ulang.';
             showToast(label, data.status === 'Diterima' ? 'success' : 'info');
             setTimeout(() => closeModal('modal-buka-tugas'), 1500);
         } else {
@@ -2483,7 +2494,7 @@ function uploadTask() {
     if (!taskId) { alert('Pilih tugas!'); return; }
     const formData = new FormData();
     formData.append('task_id', taskId);
-    formData.append('content', note || 'Laporan Karyawan');
+    formData.append('content', note || 'Laporan Staff');
     fetch('/api/submit-report', { method: 'POST', body: formData })
     .then(r => r.json())
     .then(data => {
@@ -2507,7 +2518,15 @@ document.addEventListener('DOMContentLoaded', function() {
         if (isNaN(num)) el.textContent = '0';
     });
     initCalendar();
-    initKaryawanAttendance();
+    initStaffAttendance();
 });
+
+// Keep tab after manager staff switch (?manage=x#absensi)
+(function restoreTabFromHash(){
+  var h = (location.hash || '').replace(/^#/, '');
+  if (h && typeof switchTab === 'function') {
+    try { switchTab(h); } catch(e) {}
+  }
+})();
 </script>
 {% endblock %}
