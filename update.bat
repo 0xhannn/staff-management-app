@@ -32,11 +32,21 @@ echo Installing deps...
 python -m pip install -r requirements.txt
 if errorlevel 1 pip install -r requirements.txt
 
+REM Ensure PORT=8081 (Workflow Planner uses 8080)
+if not exist .env copy .env.example .env
+findstr /B /C:"PORT=" .env >nul 2>&1
+if errorlevel 1 (
+  echo PORT=8081>>.env
+) else (
+  powershell -NoProfile -Command "(Get-Content .env) -replace '^PORT=.*','PORT=8081' | Set-Content .env"
+)
+echo PORT forced to 8081 in .env
+
 echo.
 echo ==============================
 echo  UPDATE OK
 git describe --tags --always 2>nul
-echo  Next: double-click start.bat
-echo  Then Ctrl+F5 in browser
+echo  Next: stop app, then start.bat
+echo  Open http://127.0.0.1:8081  (Ctrl+F5)
 echo ==============================
 pause

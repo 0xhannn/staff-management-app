@@ -227,55 +227,44 @@
     <!-- ============== TAB: ABSENSI ============== -->
     <div data-tab-content="absensi" class="tab-content">
         {% if login_role in ['mentor', 'owner'] %}
-        <!-- MENTOR/OWNER: Form Input Absensi + filters + Calendar -->
+        <!-- MENTOR/OWNER: Input Absensi scoped to managed staff -->
         <div class="space-y-6">
             {% if login_role == 'owner' %}
-            <div class="card p-4 max-w-3xl mx-auto">
-                <div class="flex flex-wrap items-end gap-3">
-                    <div class="flex-1 min-w-[140px]">
-                        <label class="text-[11px] uppercase tracking-wider text-gray-500 mb-1 block">Filter karyawan</label>
-                        <select id="owner-filter-staff" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white">
-                            <option value="">Semua karyawan</option>
-                            {% for u in all_users if u.username != 'owner' %}
-                            <option value="{{ u.username }}">@{{ u.username }} — {{ u.nama }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="min-w-[140px]">
-                        <label class="text-[11px] uppercase tracking-wider text-gray-500 mb-1 block">Filter tanggal</label>
-                        <input type="date" id="owner-filter-date" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white">
-                    </div>
-                    <button type="button" onclick="applyOwnerFilters()" class="px-4 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium">
-                        <i class="fas fa-filter mr-1"></i>Terapkan
-                    </button>
-                    <button type="button" onclick="clearOwnerFilters()" class="px-3 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm">Reset</button>
+            <div class="card p-4 max-w-xl mx-auto border border-amber-500/30">
+                <label class="text-[11px] uppercase tracking-wider text-amber-400/80 mb-1 block font-medium">Kelola karyawan</label>
+                <div class="flex gap-2">
+                    <select id="owner-manage-staff" class="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white"
+                            onchange="switchManageStaff(this.value)">
+                        <option value="">— Pilih karyawan dulu —</option>
+                        {% for u in staff_users %}
+                        <option value="{{ u.username }}" {% if manage_username == u.username %}selected{% endif %}>@{{ u.username }} — {{ u.nama }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
-                <p class="text-[11px] text-gray-600 mt-2">Filter tabel kehadiran & target input absensi. Kosongkan tanggal = semua hari.</p>
+                <p class="text-[11px] text-gray-500 mt-2">Owner = Atasan, tapi pilih siapa yang di-manage (tanpa login ulang). Absensi, kalender, tugas = scope karyawan ini.</p>
+            </div>
+            {% if not manage_username %}
+            <div class="card p-8 max-w-xl mx-auto text-center text-gray-500 text-sm">
+                <i class="fas fa-user-check text-3xl mb-3 opacity-40"></i>
+                <p>Pilih karyawan di atas dulu untuk input absensi / lihat kalender / kelola tugas.</p>
             </div>
             {% endif %}
+            {% endif %}
+
+            {% if login_role == 'mentor' or (login_role == 'owner' and manage_username) %}
             <div class="card p-5 max-w-xl mx-auto">
                 <h2 class="text-lg font-semibold text-white mb-1">
                     <i class="fas fa-calendar-check text-blue-400 mr-2"></i>Input Absensi
                 </h2>
                 <p class="text-sm text-gray-500 mb-4">
-                    {% if login_role == 'owner' %}
-                    Sahkan jam kerja staff (pilih target di bawah)
-                    {% else %}
-                    Sahkan jam kerja untuk <span class="text-blue-400 font-medium">@{{ user.username }}</span>
-                    {% endif %}
+                    Sahkan jam kerja untuk
+                    <span class="text-blue-400 font-medium">@{{ manage_username if login_role == 'owner' else user.username }}</span>
                 </p>
                 
                 {% if login_role == 'owner' %}
-                <div class="mb-4">
-                    <label class="text-[11px] uppercase tracking-wider text-gray-500 mb-1 block">Target karyawan</label>
-                    <select id="owner-target-staff" class="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white">
-                        {% for u in all_users if u.username != 'owner' %}
-                        <option value="{{ u.username }}">@{{ u.username }} — {{ u.nama }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
+                <input type="hidden" id="owner-target-staff" value="{{ manage_username }}">
                 {% endif %}
-                <input type="hidden" id="pkl-select" value="{{ user.id }}">
+                <input type="hidden" id="pkl-select" value="{{ manage_user.id if manage_user else user.id }}">
                 
                 <!-- Status indicator -->
                 <div id="att-status-indicator" class="mb-3 text-center">
@@ -353,7 +342,7 @@
             <div class="card p-5">
                 <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
                     <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">
-                        <i class="fas fa-users mr-2 text-emerald-400"></i>Kehadiran Staff (@{{ user.username }})
+                        <i class="fas fa-users mr-2 text-emerald-400"></i>Kehadiran Staff (@{{ manage_username if login_role == 'owner' and manage_username else user.username }})
                     </h3>
                     <button type="button" onclick="openCorrectAttendanceModal()"
                             class="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition">
@@ -430,6 +419,7 @@
                     </table>
                 </div>
             </div>
+            {% endif %}{# mentor or owner+manage #}
         </div>
         {% else %}
         <!-- Karyawan: Attendance Controls + Calendar + Riwayat Kehadiran -->
@@ -536,15 +526,21 @@
     <!-- ============== TAB: TUGAS ============== -->
     <div data-tab-content="tugas" class="tab-content">
         {% if login_role in ['mentor', 'owner'] %}
-        <!-- MENTOR: Task List + Modal Buat Tugas + Modal Buka Tugas -->
+        <!-- MENTOR/OWNER: Task List scoped -->
         <div class="space-y-6">
+            {% if login_role == 'owner' and not manage_username %}
+            <div class="card p-8 text-center text-gray-500 text-sm">
+                <i class="fas fa-user-check text-3xl mb-3 opacity-40"></i>
+                <p>Pilih karyawan di tab Absensi dulu, baru kelola tugas.</p>
+            </div>
+            {% else %}
             <!-- Header + Buat Tugas Button -->
             <div class="flex items-center justify-between">
                 <div>
                     <h2 class="text-lg font-semibold text-white">
                         <i class="fas fa-clipboard-list text-blue-400 mr-2"></i>Daftar Tugas
                     </h2>
-                    <p class="text-sm text-gray-500 mt-0.5">Kelola tugas untuk @{{ user.username }}</p>
+                    <p class="text-sm text-gray-500 mt-0.5">Kelola tugas untuk @{{ manage_username if login_role == 'owner' and manage_username else user.username }}</p>
                 </div>
                 <button onclick="openModal('modal-buat-tugas')" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition">
                     <i class="fas fa-plus mr-1"></i>Buat Tugas Baru
@@ -607,13 +603,14 @@
                         <button onclick="if(confirm('Yakin hapus tugas ini?')) deleteTask({{ t.id }}, this)" class="flex-shrink-0 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-400 hover:text-red-300 text-xs rounded-lg border border-red-500/30 transition"><i class="fas fa-trash mr-1"></i>Hapus</button>
                     </div>
                     {% endfor %}
-                    {% if not my_tasks %}
+                    {% if not all_tasks %}
                     <div class="text-center text-gray-600 text-sm py-8">
-                        <i class="fas fa-clipboard text-3xl mb-2 opacity-30"></i><br>Belum ada tugas dibuat
+                        <i class="fas fa-clipboard text-3xl mb-2 opacity-30"></i><br>Belum ada tugas{% if login_role == 'owner' and not manage_username %} — pilih karyawan dulu{% endif %}
                     </div>
                     {% endif %}
                 </div>
             </div>
+            {% endif %}{# owner manage gate #}
         </div>
         {% else %}
         <!-- Karyawan: Task List + Modal Laporkan Tugas + Modal Buka Tugas -->
@@ -731,8 +728,8 @@
                 <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1.5 font-medium">Assign ke Karyawan *</label>
                 {% if login_role == 'owner' %}
                 <select id="new-assign-to" class="form-input w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500">
-                    {% for u in all_users if u.username != 'owner' %}
-                    <option value="{{ u.username }}">@{{ u.username }} — {{ u.nama }}</option>
+                    {% for u in staff_users %}
+                    <option value="{{ u.username }}" {% if manage_username == u.username %}selected{% endif %}>@{{ u.username }} — {{ u.nama }}</option>
                     {% endfor %}
                 </select>
                 {% else %}
@@ -847,7 +844,7 @@
                 <span class="text-emerald-400">@{{ user.username }}</span> (1-to-1).
             </p>
             <input type="hidden" id="correct-att-id" value="">
-            <input type="hidden" id="correct-att-student" value="{{ user.username }}">
+            <input type="hidden" id="correct-att-student" value="{{ manage_username if login_role == 'owner' and manage_username else user.username }}">
 
             <div>
                 <label class="block text-xs text-gray-400 mb-1">Tanggal</label>
@@ -1191,25 +1188,13 @@ async function handleKaryawanAttendance() {
 }
 
 
-// ========== Owner filters (staff + date) ==========
-function applyOwnerFilters() {
-    const staff = (document.getElementById('owner-filter-staff') || {}).value || '';
-    const date = (document.getElementById('owner-filter-date') || {}).value || '';
-    document.querySelectorAll('.owner-att-row').forEach(function (tr) {
-        const okStaff = !staff || tr.getAttribute('data-staff') === staff;
-        const okDate = !date || tr.getAttribute('data-date') === date;
-        tr.style.display = (okStaff && okDate) ? '' : 'none';
-    });
-    // sync target select with filter if staff chosen
-    const tgt = document.getElementById('owner-target-staff');
-    if (tgt && staff) tgt.value = staff;
-}
-function clearOwnerFilters() {
-    const s = document.getElementById('owner-filter-staff');
-    const d = document.getElementById('owner-filter-date');
-    if (s) s.value = '';
-    if (d) d.value = '';
-    document.querySelectorAll('.owner-att-row').forEach(function (tr) { tr.style.display = ''; });
+// ========== Owner: switch managed staff (reload scoped dashboard) ==========
+function switchManageStaff(username) {
+    if (!username) {
+        window.location.href = '/dashboard?manage=';
+        return;
+    }
+    window.location.href = '/dashboard?manage=' + encodeURIComponent(username);
 }
 
 // Clock In / Clock Out (Mentor Mode - No Photo)
@@ -1255,9 +1240,12 @@ function confirmClockOut() {
 // Izin / Alpha
 function setStatus(statusType) {
     const labels = { izin: 'IZIN', alpha: 'ALPHA (skor -1)' };
-    if (!confirm(`Tandai status: ${labels[statusType] || statusType} untuk hari ini?`)) return;
+    const tgt = document.getElementById('owner-target-staff');
+    const who = (tgt && tgt.value) ? ('@' + tgt.value) : 'hari ini';
+    if (!confirm(`Tandai status: ${labels[statusType] || statusType} untuk ${who}?`)) return;
     const formData = new FormData();
     formData.append('status', statusType);
+    if (tgt && tgt.value) formData.append('target_username', tgt.value);
     fetch('/api/attendance-status', { method: 'POST', body: formData })
     .then(r => r.json())
     .then(data => {

@@ -39,6 +39,7 @@ app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
 app.mount('/uploads', StaticFiles(directory=UPLOADS_DIR), name='uploads')
 
 SESSION_COOKIE = 'staff_session'
+MANAGE_COOKIE = 'staff_manage'
 
 def _env_join(*parts: str) -> str:
     return os.environ.get(''.join(parts), '')
@@ -591,35 +592,69 @@ async def dashboard(request: Request):
         return RedirectResponse(url='/login', status_code=303)
     
     login_role = user['login_role']
+    all_users = get_all_users()
+    staff_users = [u for u in all_users if u.get('username') and u['username'] != 'owner']
 
-    stats = get_stats(user['id'])
-    recent_attendance = get_attendance(user['id'])[:7]
-    my_reports = get_tasks(user['id'])
+    # Owner manages ONE staff at a time (same UX as Atasan 1-to-1, no re-login)
+    manage_username = None
+    manage_user = None
+    if login_role == 'owner':
+        q = (request.query_params.get('manage') or '').strip().lower()
+        cookie_m = (request.cookies.get(MANAGE_COOKIE) or '').strip().lower()
+        manage_username = q or cookie_m or None
+        if manage_username:
+            manage_user = get_user_by_username(manage_username)
+            if not manage_user or manage_user.get('username') == 'owner':
+                manage_username = None
+                manage_user = None
 
     if login_role == 'owner':
-        all_tasks = get_all_tasks_admin()
+        if manage_username:
+            # Scope like Atasan on that staff
+            all_tasks = get_all_tasks(manage_username)
+            all_attendance = get_all_attendance(mentor_username=manage_username)
+            cal_att = get_attendance(manage_user['id'], limit=90)
+            today_att = get_today_attendance(manage_user['id'])
+            stats = get_stats(manage_user['id'])
+            score = get_user_score(manage_user['id'])
+            stats['score'] = score
+            recent_attendance = get_attendance(manage_user['id'])[:7]
+        else:
+            all_tasks = []
+            all_attendance = []
+            cal_att = []
+            today_att = None
+            stats = get_stats(user['id'])
+            stats['score'] = get_user_score(user['id'])
+            recent_attendance = []
         all_reports_admin = all_tasks
-        all_users = get_all_users()
-        all_attendance = get_all_attendance()
         all_stats = get_all_stats()
+        my_reports = []
     elif login_role == 'mentor':
         all_tasks = get_all_tasks(user['username'])
         all_reports_admin = all_tasks
-        all_users = get_all_users()
         all_attendance = get_all_attendance(mentor_username=user['username'])
+        cal_att = all_attendance
         all_stats = {}
+        stats = get_stats(user['id'])
+        recent_attendance = get_attendance(user['id'])[:7]
+        my_reports = get_tasks(user['id'])
+        today_att = get_today_attendance(user['id'])
+        score = get_user_score(user['id'])
+        stats['score'] = score
     else:
-        all_tasks = get_all_tasks_admin()
-        all_reports_admin = all_tasks
-        all_users = get_all_users()
+        all_tasks = []
+        all_reports_admin = []
         all_attendance = []
+        cal_att = get_attendance(user['id'], limit=90)
         all_stats = {}
+        stats = get_stats(user['id'])
+        recent_attendance = get_attendance(user['id'])[:7]
+        my_reports = get_tasks(user['id'])
+        today_att = get_today_attendance(user['id'])
+        score = get_user_score(user['id'])
+        stats['score'] = score
     
-    today_att = get_today_attendance(user['id'])
-    score = get_user_score(user['id'])
-    stats['score'] = score
-    
-    # WIB Time for dashboard
     now_wib = get_wib_time()
     current_date = now_wib.strftime('%A, %d %B %Y')
     current_time = now_wib.strftime('%H:%M:%S')
@@ -635,14 +670,23 @@ async def dashboard(request: Request):
         all_tasks=all_tasks,
         all_reports_admin=all_reports_admin,
         all_users=all_users,
+        staff_users=staff_users,
         all_attendance=all_attendance,
         all_stats=all_stats,
         today_att=today_att,
         current_date=current_date,
         current_time=current_time,
-        all_attendance_for_calendar=all_attendance or recent_attendance or []
+        all_attendance_for_calendar=cal_att or all_attendance or recent_attendance or [],
+        manage_username=manage_username,
+        manage_user=manage_user,
     )
-    return HTMLResponse(content=content)
+    resp = HTMLResponse(content=content)
+    if login_role == 'owner':
+        if manage_username:
+            resp.set_cookie(MANAGE_COOKIE, manage_username, httponly=False, samesite='lax', max_age=60*60*24*30, path='/')
+        elif request.query_params.get('manage') == '':
+            resp.delete_cookie(MANAGE_COOKIE, path='/')
+    return resp
 
 @app.get('/absensi')
 async def absensi_page(request: Request):
@@ -1010,12 +1054,28 @@ async def api_attendance_status_get(request: Request):
     )
 
 @app.post('/api/attendance-status')
-async def api_attendance_status_set(request: Request, status: str = Form(...)):
-    """Mentor/PKL: set izin or alpha for today."""
+async def api_attendance_status_set(
+    request: Request,
+    status: str = Form(...),
+    target_username: str = Form(''),
+):
+    """Set izin/alpha for self (Karyawan) or target staff (Atasan/Owner)."""
     user = require_auth(request)
     if status not in ('izin', 'alpha'):
         return JSONResponse(status_code=400, content={'success': False, 'error': 'Status tidak valid'})
-    result = set_attendance_status(user['id'], status)
+    target_id = user['id']
+    role = user.get('login_role')
+    if role in ('owner', 'mentor') and target_username and target_username.strip():
+        stu = get_user_by_username(target_username.strip().lower())
+        if not stu:
+            return JSONResponse(status_code=400, content={'success': False, 'error': 'Staff tidak ditemukan'})
+        if role == 'mentor' and stu['username'] != user['username']:
+            return JSONResponse(status_code=403, content={'success': False, 'error': 'Atasan hanya pair 1-to-1'})
+        target_id = stu['id']
+    elif role == 'owner':
+        # Owner without target must not mark self (owner account)
+        return JSONResponse(status_code=400, content={'success': False, 'error': 'Pilih karyawan dulu (target)'})
+    result = set_attendance_status(target_id, status)
     if not result.get('success'):
         return JSONResponse(status_code=400, content=result)
     return result
