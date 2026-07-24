@@ -19,15 +19,40 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo Syncing main...
+REM Default branch is master (not main). Prefer latest tag v*, then master, then main.
+echo Syncing latest release...
+git fetch origin master:refs/remotes/origin/master 2>nul
+git fetch origin main:refs/remotes/origin/main 2>nul
+
+REM Prefer explicit latest tag if present
+for /f "delims=" %%T in ('git tag -l "v*" --sort=-v:refname 2^>nul') do (
+  set LATEST_TAG=%%T
+  goto :got_tag
+)
+:got_tag
+if defined LATEST_TAG (
+  echo Checking out %LATEST_TAG% ...
+  git checkout -f %LATEST_TAG%
+  if not errorlevel 1 goto :synced
+)
+
+echo Fallback: origin/master ...
+git checkout -B master origin/master
+if not errorlevel 1 goto :synced
+git reset --hard origin/master
+if not errorlevel 1 goto :synced
+
+echo Fallback: origin/main ...
 git checkout -B main origin/main
-if errorlevel 1 git reset --hard origin/main
+if not errorlevel 1 goto :synced
+git reset --hard origin/main
 if errorlevel 1 (
-  echo FAIL: git sync.
+  echo FAIL: git sync (no master/main/tag).
   pause
   exit /b 1
 )
 
+:synced
 echo Installing deps...
 python -m pip install -r requirements.txt
 if errorlevel 1 pip install -r requirements.txt
@@ -46,6 +71,7 @@ echo.
 echo ==============================
 echo  UPDATE OK
 git describe --tags --always 2>nul
+type VERSION 2>nul
 echo  Next: stop app, then start.bat
 echo  Open http://127.0.0.1:8081  (Ctrl+F5)
 echo ==============================
