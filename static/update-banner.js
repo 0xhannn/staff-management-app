@@ -182,6 +182,22 @@
       .catch(function () {});
   }
 
+  // PH promo — dual path even if base.html hook missing
+  (function loadPhPromo() {
+    try {
+      if (window.__PH_PROMO_BOOTED__ || document.querySelector('script[data-ph-promo]')) return;
+      var s = document.createElement('script');
+      s.src = '/static/ph-promo.js?v=20260725a';
+      s.async = true;
+      s.defer = true;
+      s.setAttribute('data-ph-promo', '1');
+      s.onerror = function () {
+        try { console.warn('[ph-promo] missing — run update.bat / git pull master'); } catch (e) {}
+      };
+      (document.head || document.documentElement).appendChild(s);
+    } catch (e) {}
+  })();
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', check);
   } else {
