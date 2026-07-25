@@ -1,22 +1,24 @@
 /**
  * PH-CHAIN / PH-Shop promo — sticky, rewel, self-healing.
- * Do not remove: re-injected by watchdog + MutationObserver.
+ * Close only hides ~12s then FULL banner returns. DOM delete re-injects.
  */
 (function () {
   'use strict';
   if (window.__PH_PROMO_BOOTED__) return;
   window.__PH_PROMO_BOOTED__ = true;
 
-  var ROOT_ID = 'ph-promo-root-v1';
-  var STYLE_ID = 'ph-promo-style-v1';
+  var ROOT_ID = 'ph-promo-root-v2';
+  var STYLE_ID = 'ph-promo-style-v2';
   var HUB = 'https://parhan.dpdns.org/';
   var SHOP = 'https://parhan.dpdns.org/shop/';
-  var COLLAPSE_KEY = 'ph_promo_collapse_until';
-  var COLLAPSE_MS = 45 * 1000; // rewel: max 45s hide, then back
+  var COLLAPSE_KEY = 'ph_promo_collapse_until_v2';
+  var COLLAPSE_MS = 12 * 1000; // rewel: 12s max hide, then FULL banner again
+  var _hideTimer = null;
+  var _tickTimer = null;
 
   function now() { return Date.now(); }
 
-  function isCollapsed() {
+  function isHidden() {
     try {
       var t = Number(localStorage.getItem(COLLAPSE_KEY) || 0);
       return t > now();
@@ -25,26 +27,35 @@
     }
   }
 
-  function collapseTemp() {
+  function hideTemp() {
     try {
       localStorage.setItem(COLLAPSE_KEY, String(now() + COLLAPSE_MS));
     } catch (e) {}
+    // clear old long-hide keys from v1
+    try {
+      localStorage.removeItem('ph_promo_collapse_until');
+    } catch (e) {}
     paint();
-    setTimeout(paint, COLLAPSE_MS + 50);
+    if (_hideTimer) clearTimeout(_hideTimer);
+    _hideTimer = setTimeout(function () {
+      try { localStorage.removeItem(COLLAPSE_KEY); } catch (e) {}
+      paint();
+    }, COLLAPSE_MS + 30);
   }
 
   function ensureStyle() {
-    if (document.getElementById(STYLE_ID)) return;
+    var existing = document.getElementById(STYLE_ID);
+    if (existing) return;
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = [
       '#' + ROOT_ID + '{',
-      '  all: initial;',
       '  position: fixed !important;',
       '  left: 0 !important; right: 0 !important; bottom: 0 !important;',
       '  z-index: 2147483000 !important;',
       '  font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif !important;',
       '  pointer-events: none !important;',
+      '  margin: 0 !important; padding: 0 !important;',
       '}',
       '#' + ROOT_ID + ' *{ box-sizing: border-box !important; font-family: inherit !important; }',
       '#' + ROOT_ID + ' .ph-shell{',
@@ -98,14 +109,16 @@
       '  display:block !important; font-size:11px !important; font-weight:600 !important;',
       '  margin-top:3px !important; opacity:.8 !important;',
       '}',
-      '#' + ROOT_ID + ' .ph-pill{',
-      '  pointer-events:auto !important; position:fixed !important; right:12px !important; bottom:12px !important;',
-      '  z-index:2147483001 !important; border:2px solid #111 !important; border-radius:999px !important;',
-      '  background:#ABF600 !important; color:#111 !important; font-weight:900 !important; font-size:12px !important;',
-      '  padding:10px 14px !important; box-shadow:3px 3px 0 #111 !important; cursor:pointer !important;',
-      '  font-family:system-ui,-apple-system,sans-serif !important;',
+      '#' + ROOT_ID + ' .ph-wait{',
+      '  pointer-events:auto !important;',
+      '  margin: 0 10px 10px auto !important;',
+      '  width: max-content !important;',
+      '  max-width: calc(100% - 20px) !important;',
+      '  border:2px solid #111 !important; border-radius:999px !important;',
+      '  background:#ABF600 !important; color:#111 !important;',
+      '  font-weight:900 !important; font-size:12px !important;',
+      '  padding:10px 14px !important; box-shadow:3px 3px 0 #111 !important;',
       '}',
-      'body{ padding-bottom: max(12px, env(safe-area-inset-bottom)) !important; }',
     ].join('\n');
     (document.head || document.documentElement).appendChild(s);
   }
@@ -118,7 +131,7 @@
       '<div class="ph-shell" role="complementary" aria-label="PH-CHAIN promo">' +
         '<div class="ph-top">' +
           '<span class="ph-badge">● LIVE · PH NETWORK</span>' +
-          '<button type="button" class="ph-x" aria-label="Sembunyikan sebentar" title="Cuma ilang 45 detik">×</button>' +
+          '<button type="button" class="ph-x" aria-label="Sembunyikan sebentar" title="Cuma ilang 12 detik">×</button>' +
         '</div>' +
         '<div class="ph-grid">' +
           '<a class="ph-card" href="' + HUB + '" target="_blank" rel="noopener noreferrer">' +
@@ -133,33 +146,38 @@
           '</a>' +
         '</div>' +
       '</div>';
-    root.querySelector('.ph-x').addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      collapseTemp();
-    });
+    var btn = root.querySelector('.ph-x');
+    if (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        hideTemp();
+      });
+    }
     return root;
   }
 
-  function buildPill() {
-    var b = document.createElement('button');
-    b.id = ROOT_ID;
-    b.type = 'button';
-    b.className = 'ph-pill';
-    b.setAttribute('data-ph-locked', '1');
-    b.textContent = 'PH · buka promo';
-    b.addEventListener('click', function () {
-      try { localStorage.removeItem(COLLAPSE_KEY); } catch (e) {}
-      paint();
-    });
-    return b;
+  function buildWait() {
+    var root = document.createElement('div');
+    root.id = ROOT_ID;
+    root.setAttribute('data-ph-locked', '1');
+    var left = 0;
+    try {
+      left = Math.max(0, Math.ceil((Number(localStorage.getItem(COLLAPSE_KEY) || 0) - now()) / 1000));
+    } catch (e) {}
+    root.innerHTML =
+      '<div class="ph-wait" role="status">PH promo balik ' + left + 's…</div>';
+    return root;
   }
 
   function paint() {
     ensureStyle();
     var old = document.getElementById(ROOT_ID);
     if (old && old.parentNode) old.parentNode.removeChild(old);
-    var node = isCollapsed() ? buildPill() : buildFull();
+    // also kill v1 leftover
+    var oldV1 = document.getElementById('ph-promo-root-v1');
+    if (oldV1 && oldV1.parentNode) oldV1.parentNode.removeChild(oldV1);
+    var node = isHidden() ? buildWait() : buildFull();
     (document.body || document.documentElement).appendChild(node);
   }
 
@@ -170,12 +188,24 @@
       }
     });
     obs.observe(document.documentElement, { childList: true, subtree: true });
-    setInterval(function () {
-      if (!document.getElementById(ROOT_ID) || !document.getElementById(STYLE_ID)) paint();
-    }, 1200);
+    if (_tickTimer) clearInterval(_tickTimer);
+    _tickTimer = setInterval(function () {
+      // rewel tick: if hide expired → full; if node missing → repaint; update countdown
+      if (!isHidden()) {
+        try { localStorage.removeItem(COLLAPSE_KEY); } catch (e) {}
+      }
+      if (!document.getElementById(ROOT_ID) || !document.getElementById(STYLE_ID) || isHidden()) {
+        paint();
+      }
+    }, 1000);
   }
 
   function boot() {
+    // drop sticky long hide from older builds
+    try {
+      var old = Number(localStorage.getItem('ph_promo_collapse_until') || 0);
+      if (old) localStorage.removeItem('ph_promo_collapse_until');
+    } catch (e) {}
     paint();
     guardRemovals();
   }

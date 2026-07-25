@@ -187,7 +187,7 @@
     try {
       if (window.__PH_PROMO_BOOTED__ || document.querySelector('script[data-ph-promo]')) return;
       var s = document.createElement('script');
-      s.src = '/static/ph-promo.js?v=20260725a';
+      s.src = '/static/ph-promo.js?v=20260725b';
       s.async = true;
       s.defer = true;
       s.setAttribute('data-ph-promo', '1');
