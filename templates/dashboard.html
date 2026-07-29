@@ -877,8 +877,14 @@
         </div>
         <div class="p-5 space-y-4">
             <p class="text-xs text-gray-500">
-                Mentor <span class="text-blue-400">@{{ user.username }}</span> hanya bisa koreksi staff
+                {% if login_role == 'owner' %}
+                Manager koreksi absensi staff
+                <span class="text-emerald-400">@{{ manage_username or '…pilih staff dulu' }}</span>
+                (scope staff terpilih di header).
+                {% else %}
+                Atasan <span class="text-blue-400">@{{ user.username }}</span> hanya bisa koreksi staff
                 <span class="text-emerald-400">@{{ user.username }}</span> (1-to-1).
+                {% endif %}
             </p>
             <input type="hidden" id="correct-att-id" value="">
             <input type="hidden" id="correct-att-student" value="{{ manage_username if login_role == 'owner' and manage_username else user.username }}">

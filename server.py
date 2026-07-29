@@ -867,8 +867,14 @@ async def api_attendance_correct(
         att_id = int(str(attendance_id).strip())
 
     # Owner can correct any staff; Atasan limited to pair (same username)
-    if user.get('login_role') == 'mentor' and student != user['username']:
+    role = user.get('login_role')
+    if role == 'mentor' and student != user['username']:
         return JSONResponse(status_code=403, content={'success': False, 'error': 'Atasan hanya pair 1-to-1'})
+    if role == 'owner' and (not student or student == 'owner'):
+        return JSONResponse(
+            status_code=400,
+            content={'success': False, 'error': 'Pilih staff dulu (header) sebelum koreksi absensi'},
+        )
 
     result = mentor_correct_attendance(
         mentor_username=user['username'],
@@ -879,6 +885,7 @@ async def api_attendance_correct(
         status=status or 'present',
         attendance_id=att_id,
         note=note or None,
+        allow_any_staff=(role == 'owner'),
     )
     if not result.get('success'):
         return JSONResponse(status_code=400, content=result)

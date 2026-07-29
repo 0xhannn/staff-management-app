@@ -540,18 +540,27 @@ def mentor_correct_attendance(
     status: str = 'present',
     attendance_id: int = None,
     note: str = None,
+    allow_any_staff: bool = False,
 ) -> dict:
-    """Mentor upsert/correct attendance for 1-to-1 paired student.
+    """Mentor/Manager upsert/correct attendance.
+    - Atasan (mentor): 1-to-1 username pair only.
+    - Manager (owner): allow_any_staff=True → any active staff.
     Returns {success, message, attendance_id, data} or {success: False, error}."""
     mentor_username = (mentor_username or '').strip().lower()
     student_username = (student_username or '').strip().lower()
     if not mentor_username or not student_username:
         return {'success': False, 'error': 'Atasan/staff wajib diisi'}
-    # 1-to-1 pairing enforcement
-    if mentor_username != student_username:
+    # 1-to-1 pairing for Atasan; Manager bypasses (v1.6.2)
+    if not allow_any_staff and mentor_username != student_username:
         return {
             'success': False,
             'error': f'Mentor @{mentor_username} hanya boleh koreksi absensi staff @{mentor_username} (1-to-1)',
+        }
+    # Manager must not "correct" the system owner account itself as staff attendance
+    if allow_any_staff and student_username == 'owner':
+        return {
+            'success': False,
+            'error': 'Akun Manager (owner) bukan staff — pilih staff dulu',
         }
 
     # Validate date YYYY-MM-DD
