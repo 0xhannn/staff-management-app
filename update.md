@@ -139,3 +139,16 @@ Baseline saat handoff dibuat:
 
 - Menambahkan handoff durable untuk agent berikutnya.
 - Mencatat branch canonical `master`, role/permission model, attendance correction Manager, export, staff lifecycle, branding, dan verification rules.
+
+
+## Audit supplement — 2026-09-14
+
+- Branch utama terverifikasi di GitHub: `master`
+- HEAD branch saat supplement dibuat: `9fa5e1ebddf63b94492f28f2e7fc1848aaa9f549`
+- Perubahan ini hanya memperbarui dokumentasi handoff; source code, schema, API, environment, dan deployment tidak diubah.
+- **Schema/API:** supplement ini tidak menambah atau mengubah schema/API. Detail kontrak existing mengikuti bagian sebelumnya dan source code branch ini.
+- **Test/build:** tidak dijalankan ulang pada supplement dokumentasi ini; hasil aktual wajib dicatat setelah perubahan code berikutnya.
+- **Deployment:** tidak ada deployment dari perubahan ini. Status live wajib diverifikasi terhadap SHA branch/deployment sebelum diklaim.
+- **Rollback:** rollback dokumentasi dilakukan dengan revert commit GitHub yang dibuat oleh operasi ini; jangan reset atau revert commit source code.
+- **Blocker:** tidak ada blocker baru yang diverifikasi oleh operasi dokumentasi ini; ikuti blocker existing di bagian sebelumnya.
+- **Next step:** setiap perubahan code yang masuk branch utama wajib menambahkan log berisi tanggal, SHA, file/area, schema/API, test, deploy, blocker, dan rollback.
