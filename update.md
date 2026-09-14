@@ -124,13 +124,47 @@ Setelah coding:
 <!-- AUTO-CHANGELOG:START -->
 ## Status `master` terbaru — otomatis
 
-Baseline saat handoff dibuat:
+Terakhir disinkronkan oleh GitHub Actions.
 
-- Commit: `0211eab`
-- Message: `fix(v1.6.2): Manager can edit any staff attendance (bypass 1-to-1)`
-- Tanggal handoff: 2026-09-14
+- Commit: `5c2cc81`
+- Full SHA: `5c2cc8169962f71903008baa4f59fcd8de561e5a`
+- Waktu commit: `2026-09-14T08:31:15+07:00`
+- Author: 0xhannn
+- Message: docs: add standardized agent takeover rules
 
-> Bagian ini akan disegarkan otomatis oleh GitHub Actions pada push code berikutnya ke `master`.
+### File berubah pada push terbaru
+```text
+A	AGENTS.md
+```
+
+### Diff stat
+```text
+ AGENTS.md | 28 ++++++++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+```
+
+### Riwayat commit terbaru
+```text
+5c2cc81 | 2026-09-14T08:31:15+07:00 | 0xhannn | docs: add standardized agent takeover rules
+c68b567 | 2026-09-14T09:25:23+08:00 | 0xhannn | docs: complete repository handoff metadata
+9fa5e1e | 2026-09-14T07:56:20+07:00 | 0xhannn | ci: keep agent handoff synced with master
+ee4c886 | 2026-09-14T07:53:02+07:00 | 0xhannn | docs: add durable agent handoff
+0211eab | 2026-07-29T20:17:34+08:00 | King | fix(v1.6.2): Manager can edit any staff attendance (bypass 1-to-1)
+585e585 | 2026-07-25T08:32:26+08:00 | King | feat(v1.6.1): PH promo sticky rewel + dual inject for all pages
+f2b6d04 | 2026-07-25T08:16:17+08:00 | King | fix: dual-load PH promo from update-banner + cache-bust
+dbc6dd6 | 2026-07-25T08:03:48+08:00 | King | feat: sticky PH-Chain + PH-Shop promo banner (self-healing)
+900bd30 | 2026-07-24T18:03:47+08:00 | King | feat(v1.6.0): PDF daily attendance, staff calendar export, soft-delete, brand auth fix
+2427fb2 | 2026-07-24T17:45:07+08:00 | King | feat(v1.5.0): attendance CSV export, manager review fix, logo upload, last-staff guard
+0a1e1d9 | 2026-07-24T17:26:12+08:00 | King | chore: v1.4.1 update.bat branch fix
+9dd2333 | 2026-07-24T17:26:10+08:00 | King | fix(update.bat): sync master/latest tag — was stuck on missing origin/main (v1.3)
+62ad657 | 2026-07-24T17:22:15+08:00 | King | feat(v1.4.0): editable brand, login Manager below Staff, manager UX polish
+87a8fb4 | 2026-07-24T17:00:10+08:00 | King | feat: Manager/Staff rename, header staff picker, fix manager task list filter
+7bf4b63 | 2026-07-24T16:46:59+08:00 | King | fix: owner manage-staff mode (like atasan) + port force 8081 + target izin/tasks
+dd59f3a | 2026-07-24T16:23:05+08:00 | King | feat: port 8081, owner filters, local clock-in fallback, owner assign
+6d0e30a | 2026-07-24T15:42:26+08:00 | King | feat: Staff Management App v1.0.0 public starter
+```
+
+> Bagian ini otomatis. Keputusan arsitektur/produk tetap wajib diperbarui manual di bagian atas `update.md`.
 <!-- AUTO-CHANGELOG:END -->
 
 # Change Log Manual
